@@ -19,3 +19,7 @@
 /.idea/misc.xml
 /.idea/modules.xml
 /.idea/vcs.xml
+/cli/.secret-mainnet-evm
+/cli/.secret-mainnet-payer
+/cli/.secret-mainnet-wasm
+/cli/.secret-testnet-payer
