@@ -1,6 +1,6 @@
 import yargs from 'yargs/yargs';
 import {config, displayConfiguration, initConfiguration, isWasmContract} from './config';
-import {readSeed} from "./seed";
+import {readSeed, seed_payer} from "./seed";
 import {RaffleManager} from './lottoManager';
 import {LottoDraw} from './lottoDraw';
 import {RaffleRegistrationWasm} from "./lottoRegistrationWasm";
@@ -17,7 +17,7 @@ const argv = yargs(process.argv.slice(2)).options({
     st:  {alias: 'start', desc: 'Start the raffle'},
     sy:  {alias: 'synchronize', desc: 'Synchronize the status between smart contracts and automatically close the registrations'},
     p:  {alias: 'participate', desc: 'Participate to the lottery - Synchronize is required'},
-    net: {alias: 'network', choices:['testnet'], type:'string', desc: 'Specify the network', requiresArg: true},
+    net: {alias: 'network', choices:['testnet', 'mainnet'], type:'string', desc: 'Specify the network', requiresArg: true},
     metaTx: {alias: 'metaTransactions', desc: 'Enable meta transactions (separate attestor and sender addresses)', type: "boolean", default: false},
 }).version('0.1').parseSync();
 
@@ -142,7 +142,7 @@ async function run() : Promise<void>{
     // configure the phat contract
     if (argv.configureCommunicator) {
 
-        const senderKey = argv.metaTx ? "0xea31cc677ba1c0109cda39829e2f3c00d7ec36ea08b186d2ec906a2bb8849e3c" : null;
+        const senderKey = argv.metaTx ? seed_payer : null;
 
         // lotto draw - set the raffle manager
         await lottoDraw.setRaffleManager(config.lottoManager, senderKey);
