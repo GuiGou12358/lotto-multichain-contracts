@@ -2,6 +2,7 @@ import { HardhatUserConfig, vars, task } from "hardhat/config";
 import "@nomicfoundation/hardhat-toolbox";
 
 const MINATO_OWNER_PRIVATE_KEY = vars.get("LOTTO_MINATO_OWNER_KEY");
+const SONEIUM_OWNER_PRIVATE_KEY = vars.get("LOTTO_SONEIUM_OWNER_KEY");
 const MINATO_EVM_ATTESTOR_PK = vars.get("LOTTO_MINATO_ATTESTOR_KEY");
 const MINATO_USER1_PRIVATE_KEY = vars.get("LOTTO_MINATO_USER1_KEY");
 const MINATO_USER2_PRIVATE_KEY = vars.get("LOTTO_MINATO_USER2_KEY");
@@ -71,6 +72,10 @@ const config: HardhatUserConfig = {
       }
        */
     },
+    'soneium': {
+      url: 'https://rpc.soneium.org',
+      accounts: [SONEIUM_OWNER_PRIVATE_KEY],
+    },
     'moonbase': {
       url: 'https://rpc.api.moonbase.moonbeam.network',
       accounts: [MINATO_OWNER_PRIVATE_KEY, MINATO_EVM_ATTESTOR_PK, MINATO_USER1_PRIVATE_KEY, MINATO_USER2_PRIVATE_KEY]
@@ -88,6 +93,7 @@ const config: HardhatUserConfig = {
   etherscan: {
     apiKey: {
       'minato': 'empty',
+      'soneium': 'empty',
       'moonbase': MOONBASE_API_KEY,
       'shibuya': 'empty',
       'base-sepolia': 'empty'
@@ -99,6 +105,14 @@ const config: HardhatUserConfig = {
         urls: {
           apiURL: "https://soneium-minato.blockscout.com/api",
           browserURL: "https://soneium-minato.blockscout.com"
+        }
+      },
+      {
+        network: "soneium",
+        chainId: 1868,
+        urls: {
+          apiURL: "https://soneium.blockscout.com/api",
+          browserURL: "https://soneium.blockscout.com"
         }
       },
       {

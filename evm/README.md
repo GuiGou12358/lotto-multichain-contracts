@@ -31,3 +31,9 @@ npx hardhat coverage
 npx hardhat ignition deploy ./ignition/modules/RaffleRegistration.ts --network moonbase
 npx hardhat ignition deploy ./ignition/modules/RaffleRegistration.ts --network minato
 ```
+
+## Deployment on mainnet
+
+```shell
+npx hardhat ignition deploy ./ignition/modules/RaffleRegistration.ts --network soneium
+```
