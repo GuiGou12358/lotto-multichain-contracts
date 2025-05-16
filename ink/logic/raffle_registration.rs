@@ -1,17 +1,15 @@
 use crate::error::{RaffleError, RaffleError::*};
 use crate::{DrawNumber, Number};
 use ink::prelude::vec::Vec;
-use phat_rollup_anchor_ink::traits::rollup_anchor::RollupAnchor;
-use scale::{Decode, Encode};
+use ink_client_lib::traits::kv_store::KvStore;
+use ink::scale::{Decode, Encode};
 
 const STATUS: u32 = ink::selector_id!("STATUS");
 const DRAW_NUMBER: u32 = ink::selector_id!("DRAW_NUMBER");
 
-#[derive(Default, Debug, Eq, PartialEq, Copy, Clone, scale::Encode, scale::Decode)]
-#[cfg_attr(
-    feature = "std",
-    derive(scale_info::TypeInfo, ink::storage::traits::StorageLayout)
-)]
+#[derive(Default, Debug, Eq, PartialEq, Clone)]
+#[ink::scale_derive(Encode, Decode, TypeInfo)]
+#[allow(clippy::cast_possible_truncation)]
 pub enum Status {
     #[default]
     NotStarted,
@@ -22,12 +20,27 @@ pub enum Status {
     ResultsReceived,
 }
 
-#[openbrush::trait_definition]
-pub trait Raffle: RollupAnchor {
+
+#[ink::trait_definition]
+pub trait Raffle {
+
+    /// check if the user can participate are open
+    #[ink(message)]
+    fn can_participate(&mut self) -> bool;
+
+    #[ink(message)]
+    fn get_draw_number(&self) -> Result<DrawNumber, RaffleError> ;
+
+    #[ink(message)]
+    fn get_status(&self) -> Result<Status, RaffleError> ;
+    
+}
+
+pub trait BaseRaffle: KvStore {
     /// start (the config cannot be updated anymore)
     fn start(&mut self) -> Result<(), RaffleError> {
         // check the status
-        if self.get_status()? != Status::NotStarted {
+        if self.inner_get_status()? != Status::NotStarted {
             return Err(IncorrectStatus);
         }
 
@@ -39,12 +52,12 @@ pub trait Raffle: RollupAnchor {
     /// Open the registrations
     fn open_registrations(&mut self, draw_number: DrawNumber) -> Result<(), RaffleError> {
         // check the status
-        let status = self.get_status()?;
+        let status = self.inner_get_status()?;
         if status != Status::Started && status != Status::ResultsReceived {
             return Err(IncorrectStatus);
         }
 
-        self.set_draw_number(draw_number);
+        self.inner_set_draw_number(draw_number);
         self.set_status(Status::RegistrationsOpen);
 
         Ok(())
@@ -53,11 +66,11 @@ pub trait Raffle: RollupAnchor {
     /// Close the registrations
     fn close_registrations(&mut self, draw_number: DrawNumber) -> Result<(), RaffleError> {
         // check the status
-        if self.get_status()? != Status::RegistrationsOpen {
+        if self.inner_get_status()? != Status::RegistrationsOpen {
             return Err(IncorrectStatus);
         }
         // check the draw number
-        if self.get_draw_number()? != draw_number {
+        if self.inner_get_draw_number()? != draw_number {
             return Err(IncorrectDrawNumber);
         }
         // update the status
@@ -71,11 +84,11 @@ pub trait Raffle: RollupAnchor {
         draw_number: DrawNumber,
     ) -> Result<(), RaffleError> {
         // check the status
-        if self.get_status()? != Status::RegistrationsClosed {
+        if self.inner_get_status()? != Status::RegistrationsClosed {
             return Err(IncorrectStatus);
         }
         // check the draw number
-        if self.get_draw_number()? != draw_number {
+        if self.inner_get_draw_number()? != draw_number {
             return Err(IncorrectDrawNumber);
         }
 
@@ -91,12 +104,12 @@ pub trait Raffle: RollupAnchor {
         _has_winner: bool,
     ) -> Result<(), RaffleError> {
         // check the status
-        let status = self.get_status()?;
+        let status = self.inner_get_status()?;
         if status != Status::RegistrationsClosed && status != Status::SaltGenerated {
             return Err(IncorrectStatus);
         }
         // check the draw number
-        if self.get_draw_number()? != draw_number {
+        if self.inner_get_draw_number()? != draw_number {
             return Err(IncorrectDrawNumber);
         }
 
@@ -107,7 +120,7 @@ pub trait Raffle: RollupAnchor {
     /// check if the registrations are open
     fn check_can_participate(&mut self) -> Result<(), RaffleError> {
         // check the status
-        if !self.can_participate() {
+        if !self.inner_can_participate() {
             return Err(IncorrectStatus);
         }
 
@@ -115,33 +128,30 @@ pub trait Raffle: RollupAnchor {
     }
 
     /// check if the user can participate are open
-    #[ink(message)]
-    fn can_participate(&mut self) -> bool {
-        self.get_status() == Ok(Status::RegistrationsOpen)
+    fn inner_can_participate(&mut self) -> bool {
+        self.inner_get_status() == Ok(Status::RegistrationsOpen)
     }
 
-    #[ink(message)]
-    fn get_draw_number(&self) -> Result<DrawNumber, RaffleError> {
-        match RollupAnchor::get_value(self, DRAW_NUMBER.encode()) {
+    fn inner_get_draw_number(&self) -> Result<DrawNumber, RaffleError> {
+        match KvStore::inner_get_value(self, &DRAW_NUMBER.encode()) {
             Some(v) => DrawNumber::decode(&mut v.as_slice()).map_err(|_| FailedToDecode),
             _ => Ok(0),
         }
     }
 
-    fn set_draw_number(&mut self, draw_number: DrawNumber) {
-        RollupAnchor::set_value(self, &DRAW_NUMBER.encode(), Some(&draw_number.encode()));
+    fn inner_set_draw_number(&mut self, draw_number: DrawNumber) {
+        KvStore::inner_set_value(self, &DRAW_NUMBER.encode(), Some(&draw_number.encode()));
     }
 
-    #[ink(message)]
-    fn get_status(&self) -> Result<Status, RaffleError> {
-        match RollupAnchor::get_value(self, STATUS.encode()) {
+    fn inner_get_status(&self) -> Result<Status, RaffleError> {
+        match KvStore::inner_get_value(self, &STATUS.encode()) {
             Some(v) => Status::decode(&mut v.as_slice()).map_err(|_| FailedToDecode),
             _ => Ok(Status::NotStarted),
         }
     }
 
     fn set_status(&mut self, status: Status) {
-        RollupAnchor::set_value(self, &STATUS.encode(), Some(&status.encode()));
+        KvStore::inner_set_value(self, &STATUS.encode(), Some(&status.encode()));
     }
 }
 

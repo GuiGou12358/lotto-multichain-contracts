@@ -2,9 +2,8 @@ use crate::error::{RaffleError, RaffleError::*};
 use crate::{AccountId20, AccountId32, DrawNumber, Number, RegistrationContractId, Salt};
 use ink::prelude::vec::Vec;
 use ink::storage::Mapping;
-use openbrush::traits::Storage;
-use phat_rollup_anchor_ink::traits::rollup_anchor::RollupAnchor;
-use scale::{Decode, Encode};
+use ink_client_lib::traits::kv_store::KvStore;
+use ink::scale::{Decode, Encode};
 
 const STATUS: u32 = ink::selector_id!("STATUS");
 const DRAW_NUMBER: u32 = ink::selector_id!("DRAW_NUMBER");
@@ -12,8 +11,8 @@ const DRAW_NUMBER: u32 = ink::selector_id!("DRAW_NUMBER");
 pub type Winners = (Vec<AccountId32>, Vec<AccountId20>);
 
 #[derive(Default, Debug)]
-#[openbrush::storage_item]
-pub struct Data {
+#[ink::storage_item]
+pub struct RaffleManagerData {
     registration_contracts: Vec<RegistrationContractId>,
     registration_contracts_status: Mapping<RegistrationContractId, Status>,
     salts: Mapping<DrawNumber, Vec<(RegistrationContractId, Salt)>>,
@@ -23,11 +22,10 @@ pub struct Data {
     min_number_salts: u8,
 }
 
-#[derive(Default, Debug, Eq, PartialEq, Copy, Clone, scale::Encode, scale::Decode)]
-#[cfg_attr(
-    feature = "std",
-    derive(scale_info::TypeInfo, ink::storage::traits::StorageLayout)
-)]
+#[derive(Default, Debug, Eq, PartialEq, Clone, Copy)]
+#[ink::scale_derive(Encode, Decode, TypeInfo)]
+#[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
+#[allow(clippy::cast_possible_truncation)]
 pub enum Status {
     #[default]
     NotStarted,
@@ -40,8 +38,45 @@ pub enum Status {
     DrawFinished,
 }
 
-#[openbrush::trait_definition]
-pub trait RaffleManager: Storage<Data> + RollupAnchor {
+
+#[ink::trait_definition]
+pub trait RaffleManager {
+    
+    #[ink(message)]
+    fn get_min_number_salts(&self) -> u8;
+
+    #[ink(message)]
+    fn get_draw_number(&self) -> Result<DrawNumber, RaffleError>;
+
+    #[ink(message)]
+    fn get_status(&self) -> Result<Status, RaffleError> ;
+    
+    #[ink(message)]
+    fn get_registration_contracts(&self) -> Vec<RegistrationContractId>;
+
+    #[ink(message)]
+    fn get_registration_contract_status(
+        &self,
+        registration_contract: RegistrationContractId,
+    ) -> Option<Status> ;
+
+    #[ink(message)]
+    fn get_generated_salt(&self, draw_number: DrawNumber) -> Option<Salt> ;
+
+    #[ink(message)]
+    fn get_results(&self, draw_number: DrawNumber) -> Option<Vec<Number>>;
+
+    #[ink(message)]
+    fn get_winners(&self, draw_number: DrawNumber) -> Option<Winners> ;
+
+}
+
+pub trait RaffleManagerStorage {
+    fn get_storage(&self) -> &RaffleManagerData;
+    fn get_mut_storage(&mut self) -> &mut RaffleManagerData;
+}
+
+pub trait BaseRaffleManager: RaffleManagerStorage + KvStore {
 
     /// Set the registration contracts
     fn set_registration_contracts(
@@ -52,10 +87,10 @@ pub trait RaffleManager: Storage<Data> + RollupAnchor {
         self.check_registration_contracts_status(Status::NotStarted)?;
 
         // update the new contract
-        self.data::<Data>().registration_contracts = registration_contracts.clone();
+        RaffleManagerStorage::get_mut_storage(self).registration_contracts = registration_contracts.clone();
         // add the default status for this added contract
         for registration_contract in &registration_contracts {
-            self.data::<Data>()
+            RaffleManagerStorage::get_mut_storage(self)
                 .registration_contracts_status
                 .insert(registration_contract, &Status::NotStarted);
         }
@@ -63,9 +98,8 @@ pub trait RaffleManager: Storage<Data> + RollupAnchor {
         Ok(())
     }
 
-    #[ink(message)]
-    fn get_min_number_salts(&self) -> u8 {
-        self.data::<Data>().min_number_salts
+    fn inner_get_min_number_salts(&self) -> u8 {
+        RaffleManagerStorage::get_storage(self).min_number_salts
     }
 
     /// Set the minimum number of salts
@@ -77,7 +111,7 @@ pub trait RaffleManager: Storage<Data> + RollupAnchor {
         self.check_registration_contracts_status(Status::NotStarted)?;
 
         // update the storage
-        self.data::<Data>().min_number_salts = min_number_salts;
+        RaffleManagerStorage::get_mut_storage(self).min_number_salts = min_number_salts;
 
         Ok(())
     }
@@ -96,7 +130,7 @@ pub trait RaffleManager: Storage<Data> + RollupAnchor {
     /// Open the registrations
     fn open_registrations(&mut self) -> Result<DrawNumber, RaffleError> {
         // check the status
-        let status = self.get_status()?;
+        let status = self.inner_get_status()?;
         if status != Status::Started && status != Status::DrawFinished {
             return Err(IncorrectStatus);
         }
@@ -104,7 +138,7 @@ pub trait RaffleManager: Storage<Data> + RollupAnchor {
         self.check_registration_contracts_status(status)?;
 
         // increment the draw number
-        let new_draw_number = self.get_draw_number()?
+        let new_draw_number = self.inner_get_draw_number()?
             .checked_add(1)
             .ok_or(AddOverFlow)?;
     
@@ -127,23 +161,23 @@ pub trait RaffleManager: Storage<Data> + RollupAnchor {
 
         // update the status
         self.set_status(Status::RegistrationsClosed);
-        self.get_draw_number()
+        self.inner_get_draw_number()
     }
 
     /// Try to generate the salt
     /// Return the salt or the list of missing contracts
     fn try_to_generate_salt(&mut self) -> Result<(Option<Salt>, Vec<RegistrationContractId>), RaffleError> {
         // check and update the status
-        match self.get_status()? {
+        match self.inner_get_status()? {
             Status::RegistrationsClosed => self.set_status(Status::WaitingSalt),
             Status::WaitingSalt => {},
             _ => return Err(IncorrectStatus),
         };
 
-        let draw_number = self.get_draw_number()?;
+        let draw_number = self.inner_get_draw_number()?;
 
         // manage the case when we don't want salts generated by registration contracts
-        if self.data::<Data>().min_number_salts == 0 {
+        if RaffleManagerStorage::get_storage(self).min_number_salts == 0 {
             // default salt used for test purpose
             let salts = Vec::new();
             //let default_salt = [0u8; 32];
@@ -156,10 +190,10 @@ pub trait RaffleManager: Storage<Data> + RollupAnchor {
         }
 
         // get the salts generated by registration contracts
-        let contracts_salts = self.data::<Data>().salts.get(draw_number).unwrap_or_default();
+        let contracts_salts = RaffleManagerStorage::get_storage(self).salts.get(draw_number).unwrap_or_default();
 
         // test if we received enough salts
-        let min_number_salts = self.data::<Data>().min_number_salts as usize;
+        let min_number_salts = RaffleManagerStorage::get_storage(self).min_number_salts as usize;
         if contracts_salts.len() >= min_number_salts  {
             // we already receive enough salt to generate the final salt
             // collect all salt
@@ -173,10 +207,9 @@ pub trait RaffleManager: Storage<Data> + RollupAnchor {
         // we didn't receive enough salt
         let mut missing_contracts = Vec::new();
 
-        for i in 0..self.data::<Data>().registration_contracts.len() {
-            let contract_id = self.data::<Data>().registration_contracts[i];
-            let contract_status = self
-                .data::<Data>()
+        for i in 0..RaffleManagerStorage::get_storage(self).registration_contracts.len() {
+            let contract_id = RaffleManagerStorage::get_storage(self).registration_contracts[i];
+            let contract_status = RaffleManagerStorage::get_mut_storage(self)
                 .registration_contracts_status
                 .get(contract_id);
             if contract_status != Some(Status::WaitingSalt) {
@@ -202,9 +235,9 @@ pub trait RaffleManager: Storage<Data> + RollupAnchor {
         let mut output_salt = <hash::Blake2x256 as hash::HashOutput>::Type::default();
         ink::env::hash_bytes::<hash::Blake2x256>(&input_salts, &mut output_salt);
 
-        match self.data::<Data>().generated_salt.get(draw_number) {
+        match RaffleManagerStorage::get_storage(self).generated_salt.get(draw_number) {
             Some(_) => return Err(ExistingSalt),
-            None => self.data::<Data>().generated_salt.insert(draw_number, &output_salt.to_vec()),
+            None => RaffleManagerStorage::get_mut_storage(self).generated_salt.insert(draw_number, &output_salt.to_vec()),
         };
 
         Ok(output_salt.to_vec())
@@ -217,23 +250,23 @@ pub trait RaffleManager: Storage<Data> + RollupAnchor {
         contracts_salts: Vec<(RegistrationContractId, Salt)>,
     ) -> Result<(), RaffleError> {
         // check the status
-        if self.get_status()? != Status::WaitingSalt {
+        if self.inner_get_status()? != Status::WaitingSalt {
             return Err(IncorrectStatus);
         }
         // check the draw number
-        if self.get_draw_number()? != draw_number {
+        if self.inner_get_draw_number()? != draw_number {
             return Err(IncorrectDrawNumber);
         }
 
         for (contract_id, salt) in contracts_salts.iter() {
-            match self.data::<Data>().registration_contracts_status.get(contract_id) {
+            match RaffleManagerStorage::get_storage(self).registration_contracts_status.get(contract_id) {
                 Some(Status::RegistrationsClosed) => {
                     // update the status
-                    self.data::<Data>().registration_contracts_status.insert(contract_id, &Status::WaitingSalt);
+                    RaffleManagerStorage::get_mut_storage(self).registration_contracts_status.insert(contract_id, &Status::WaitingSalt);
                     // add the hash
-                    let mut registered_contracts_salts = self.data::<Data>().salts.get(draw_number).unwrap_or_default();
+                    let mut registered_contracts_salts = RaffleManagerStorage::get_storage(self).salts.get(draw_number).unwrap_or_default();
                     registered_contracts_salts.push((*contract_id, salt.to_vec()));
-                    self.data::<Data>().salts.insert(draw_number, &registered_contracts_salts);
+                    RaffleManagerStorage::get_mut_storage(self).salts.insert(draw_number, &registered_contracts_salts);
                 },
                 _ => return Err(IncorrectStatus)
             }
@@ -246,15 +279,14 @@ pub trait RaffleManager: Storage<Data> + RollupAnchor {
     /// return the contracts not synchronized yet
     fn check_registration_contracts_status(&self, status: Status) -> Result<(), RaffleError> {
         // check the status in the manager
-        if self.get_status()? != status {
+        if self.inner_get_status()? != status {
             return Err(IncorrectStatus);
         }
 
         // check the status in all  registration contracts
-        for i in 0..self.data::<Data>().registration_contracts.len() {
-            let contract_id = self.data::<Data>().registration_contracts[i];
-            let contract_status = self
-                .data::<Data>()
+        for i in 0..RaffleManagerStorage::get_storage(self).registration_contracts.len() {
+            let contract_id = RaffleManagerStorage::get_storage(self).registration_contracts[i];
+            let contract_status = RaffleManagerStorage::get_storage(self)
                 .registration_contracts_status
                 .get(contract_id);
             if contract_status != Some(status) {
@@ -274,16 +306,16 @@ pub trait RaffleManager: Storage<Data> + RollupAnchor {
         registration_contracts: Vec<RegistrationContractId>,
     ) -> Result<Vec<RegistrationContractId>, RaffleError> {
         // check the status
-        if self.get_status()? != status {
+        if self.inner_get_status()? != status {
             return Err(IncorrectStatus);
         }
         // check the draw number
-        if self.get_draw_number()? != draw_number {
+        if self.inner_get_draw_number()? != draw_number {
             return Err(IncorrectDrawNumber);
         }
 
         for registration_contract in &registration_contracts {
-            self.data::<Data>()
+            RaffleManagerStorage::get_mut_storage(self)
                 .registration_contracts_status
                 .insert(registration_contract, &status);
         }
@@ -291,10 +323,9 @@ pub trait RaffleManager: Storage<Data> + RollupAnchor {
         // contract not synchronized yet
         let mut not_synchronized_contracts = Vec::new();
 
-        for i in 0..self.data::<Data>().registration_contracts.len() {
-            let contract_id = self.data::<Data>().registration_contracts[i];
-            let contract_status = self
-                .data::<Data>()
+        for i in 0..RaffleManagerStorage::get_storage(self).registration_contracts.len() {
+            let contract_id = RaffleManagerStorage::get_storage(self).registration_contracts[i];
+            let contract_status = RaffleManagerStorage::get_storage(self)
                 .registration_contracts_status
                 .get(contract_id);
             if contract_status != Some(status) {
@@ -305,58 +336,51 @@ pub trait RaffleManager: Storage<Data> + RollupAnchor {
         Ok(not_synchronized_contracts)
     }
 
-    #[ink(message)]
-    fn get_draw_number(&self) -> Result<DrawNumber, RaffleError> {
-        match RollupAnchor::get_value(self, DRAW_NUMBER.encode()) {
+    fn inner_get_draw_number(&self) -> Result<DrawNumber, RaffleError> {
+        match KvStore::inner_get_value(self, &DRAW_NUMBER.encode()) {
             Some(v) => DrawNumber::decode(&mut v.as_slice()).map_err(|_| FailedToDecode),
             _ => Ok(0),
         }
     }
 
     fn set_draw_number(&mut self, draw_number: DrawNumber) {
-        RollupAnchor::set_value(self, &DRAW_NUMBER.encode(), Some(&draw_number.encode()));
+        KvStore::inner_set_value(self, &DRAW_NUMBER.encode(), Some(&draw_number.encode()));
     }
 
-    #[ink(message)]
-    fn get_status(&self) -> Result<Status, RaffleError> {
-        match RollupAnchor::get_value(self, STATUS.encode()) {
+    fn inner_get_status(&self) -> Result<Status, RaffleError> {
+        match KvStore::inner_get_value(self, &STATUS.encode()) {
             Some(v) => Status::decode(&mut v.as_slice()).map_err(|_| FailedToDecode),
             _ => Ok(Status::NotStarted),
         }
     }
 
     fn set_status(&mut self, status: Status) {
-        RollupAnchor::set_value(self, &STATUS.encode(), Some(&status.encode()));
+        KvStore::inner_set_value(self, &STATUS.encode(), Some(&status.encode()));
     }
 
-    #[ink(message)]
-    fn get_registration_contracts(&self) -> Vec<RegistrationContractId> {
-        self.data::<Data>().registration_contracts.clone()
+    fn inner_get_registration_contracts(&self) -> Vec<RegistrationContractId> {
+        RaffleManagerStorage::get_storage(self).registration_contracts.clone()
     }
 
-    #[ink(message)]
-    fn get_registration_contract_status(
+    fn inner_get_registration_contract_status(
         &self,
         registration_contract: RegistrationContractId,
     ) -> Option<Status> {
-        self.data::<Data>()
+        RaffleManagerStorage::get_storage(self)
             .registration_contracts_status
             .get(registration_contract)
     }
 
-    #[ink(message)]
-    fn get_generated_salt(&self, draw_number: DrawNumber) -> Option<Salt> {
-        self.data::<Data>().generated_salt.get(draw_number)
+    fn inner_get_generated_salt(&self, draw_number: DrawNumber) -> Option<Salt> {
+        RaffleManagerStorage::get_storage(self).generated_salt.get(draw_number)
     }
 
-    #[ink(message)]
-    fn get_results(&self, draw_number: DrawNumber) -> Option<Vec<Number>> {
-        self.data::<Data>().results.get(draw_number)
+    fn inner_get_results(&self, draw_number: DrawNumber) -> Option<Vec<Number>> {
+        RaffleManagerStorage::get_storage(self).results.get(draw_number)
     }
 
-    #[ink(message)]
-    fn get_winners(&self, draw_number: DrawNumber) -> Option<Winners> {
-        self.data::<Data>().winners.get(draw_number)
+    fn inner_get_winners(&self, draw_number: DrawNumber) -> Option<Winners> {
+        RaffleManagerStorage::get_storage(self).winners.get(draw_number)
     }
 
     /// save the results for the current raffle.
@@ -366,22 +390,22 @@ pub trait RaffleManager: Storage<Data> + RollupAnchor {
         results: Vec<Number>,
     ) -> Result<(), RaffleError> {
         // check the raffle number
-        if self.get_draw_number()? != draw_number {
+        if self.inner_get_draw_number()? != draw_number {
             return Err(IncorrectDrawNumber);
         }
 
         // check the status
-        let status = self.get_status()?;
+        let status = self.inner_get_status()?;
         //if status != Status::RegistrationsClosed && status != Status::WaitingSalt {
         if status != Status::WaitingResult {
             return Err(IncorrectStatus);
         }
 
-        match self.data::<Data>().results.get(draw_number) {
+        match RaffleManagerStorage::get_storage(self).results.get(draw_number) {
             Some(_) => Err(ExistingResults),
             None => {
                 // save the results
-                self.data::<Data>().results.insert(draw_number, &results);
+                RaffleManagerStorage::get_mut_storage(self).results.insert(draw_number, &results);
                 // update the status
                 self.set_status(Status::WaitingWinner);
                 Ok(())
@@ -391,13 +415,12 @@ pub trait RaffleManager: Storage<Data> + RollupAnchor {
 
     /// check if the saved results are the same as the ones given in parameter
     fn ensure_same_results(
-        &mut self,
+        &self,
         draw_number: DrawNumber,
         numbers: &[Number],
     ) -> Result<(), RaffleError> {
         // get the correct results for the given raffle
-        let result = self
-            .data::<Data>()
+        let result = RaffleManagerStorage::get_storage(self)
             .results
             .get(draw_number)
             .ok_or(DifferentResults)?;
@@ -422,21 +445,21 @@ pub trait RaffleManager: Storage<Data> + RollupAnchor {
         winners: Winners,
     ) -> Result<(), RaffleError> {
         // check the raffle number
-        if self.get_draw_number()? != draw_number {
+        if self.inner_get_draw_number()? != draw_number {
             return Err(IncorrectDrawNumber);
         }
 
         // check the status
-        if self.get_status()? != Status::WaitingWinner {
+        if self.inner_get_status()? != Status::WaitingWinner {
             return Err(IncorrectStatus);
         }
 
-        match self.data::<Data>().winners.get(draw_number) {
+        match RaffleManagerStorage::get_storage(self).winners.get(draw_number) {
             Some(_) => Err(ExistingWinners),
             None => {
                 // save the result
                 if !winners.0.is_empty() || !winners.1.is_empty() {
-                    self.data::<Data>().winners.insert(draw_number, &winners);
+                    RaffleManagerStorage::get_mut_storage(self).winners.insert(draw_number, &winners);
                 }
                 // update the status
                 self.set_status(Status::DrawFinished);

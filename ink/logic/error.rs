@@ -1,5 +1,6 @@
-#[derive(Debug, Eq, PartialEq, scale::Encode, scale::Decode)]
-#[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
+#[derive(Debug, Eq, PartialEq)]
+#[ink::scale_derive(Encode, Decode, TypeInfo)]
+#[allow(clippy::cast_possible_truncation)]
 pub enum RaffleError {
     IncorrectDrawNumber,
     IncorrectStatus,

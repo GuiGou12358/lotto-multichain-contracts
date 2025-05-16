@@ -1,27 +1,40 @@
 use crate::error::RaffleError;
 use crate::error::RaffleError::*;
 use crate::Number;
-use openbrush::traits::Storage;
 
 #[derive(Default, Debug)]
-#[openbrush::storage_item]
-pub struct Data {
+#[ink::storage_item]
+pub struct ConfigData {
     config: Option<Config>,
 }
 
-#[derive(Debug, Eq, PartialEq, Copy, Clone, scale::Encode, scale::Decode)]
-#[cfg_attr(
-    feature = "std",
-    derive(scale_info::TypeInfo, ink::storage::traits::StorageLayout)
-)]
+#[derive(Debug, Eq, PartialEq, Copy, Clone)]
+#[ink::scale_derive(Encode, Decode, TypeInfo)]
+#[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
 pub struct Config {
     pub nb_numbers: u8,
     pub min_number: Number,
     pub max_number: Number,
 }
 
-#[openbrush::trait_definition]
-pub trait RaffleConfig: Storage<Data> {
+#[ink::trait_definition]
+pub trait RaffleConfig {
+    #[ink(message)]
+    fn get_config(&self) -> Option<Config>;
+}
+
+
+pub trait RaffleConfigStorage {
+    fn get_storage(&self) -> &ConfigData;
+    fn get_mut_storage(&mut self) -> &mut ConfigData;
+}
+
+pub trait BaseRaffleConfig: RaffleConfigStorage {
+
+    fn inner_get_config(&self) -> Option<Config>{
+        self.get_storage().config
+    }
+
     fn set_config(&mut self, config: Config) -> Result<(), RaffleError> {
         // check the config
         if config.nb_numbers == 0 {
@@ -32,18 +45,13 @@ pub trait RaffleConfig: Storage<Data> {
             return Err(IncorrectConfig);
         }
 
-        self.data::<Data>().config = Some(config);
+        self.get_mut_storage().config = Some(config);
         Ok(())
-    }
-
-    #[ink(message)]
-    fn get_config(&self) -> Option<Config> {
-        self.data::<Data>().config
     }
 
     /// return the config and throw an error of the config is missing
     fn ensure_config(&self) -> Result<Config, RaffleError> {
-        match self.data::<Data>().config {
+        match self.get_storage().config {
             None => Err(ConfigNotSet),
             Some(config) => Ok(config),
         }
