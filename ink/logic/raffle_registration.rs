@@ -26,7 +26,7 @@ pub trait Raffle {
 
     /// check if the user can participate are open
     #[ink(message)]
-    fn can_participate(&mut self) -> bool;
+    fn can_participate(&self) -> bool;
 
     #[ink(message)]
     fn get_draw_number(&self) -> Result<DrawNumber, RaffleError> ;
@@ -128,7 +128,7 @@ pub trait BaseRaffle: KvStore {
     }
 
     /// check if the user can participate are open
-    fn inner_can_participate(&mut self) -> bool {
+    fn inner_can_participate(&self) -> bool {
         self.inner_get_status() == Ok(Status::RegistrationsOpen)
     }
 
