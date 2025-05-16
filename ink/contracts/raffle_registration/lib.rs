@@ -1,19 +1,27 @@
 #![cfg_attr(not(feature = "std"), no_std, no_main)]
 
-#[openbrush::implementation(Ownable, AccessControl, Upgradeable)]
-#[openbrush::contract]
+#[ink::contract]
 pub mod lotto_registration_contract {
     use ink::prelude::vec::Vec;
-    use lotto::{
-        config, config::*, error::*, raffle_registration::*, DrawNumber, Number,
-        RegistrationContractId,
+    use lotto::{config::*, error::*, raffle_registration::*, DrawNumber, Number, RegistrationContractId};
+
+    use ink_client_lib::traits::access_control::{
+        AccessControl, AccessControlData, AccessControlError, AccessControlStorage,
+        BaseAccessControl, RoleType,
     };
-    use openbrush::contracts::access_control::*;
-    use openbrush::contracts::ownable::*;
-    use openbrush::{modifiers, traits::Storage};
-    use phat_rollup_anchor_ink::traits::{
-        meta_transaction, meta_transaction::*, rollup_anchor, rollup_anchor::*,
+    use ink_client_lib::traits::kv_store::{Key, KvStore, KvStoreData, KvStoreStorage, Value};
+    use ink_client_lib::traits::message_queue::{MessageQueue};
+    use ink_client_lib::traits::meta_transaction::{
+        BaseMetaTransaction, ForwardRequest, MetaTransaction, MetaTransactionData,
+        MetaTransactionStorage,
     };
+    use ink_client_lib::traits::ownable::{
+        BaseOwnable, Ownable, OwnableData, OwnableError, OwnableStorage,
+    };
+    use ink_client_lib::traits::rollup_client::{
+        BaseRollupClient, HandleActionInput, RollupClient, ATTESTOR_ROLE
+    };
+    use ink_client_lib::traits::RollupClientError;
 
     /// Event emitted when the config is updated
     #[ink(event)]
@@ -79,12 +87,13 @@ pub mod lotto_registration_contract {
     }
 
     /// Errors occurred in the contract
-    #[derive(Debug, Eq, PartialEq, scale::Encode, scale::Decode)]
-    #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
+    #[derive(Debug, Eq, PartialEq)]
+    #[ink::scale_derive(Encode, Decode, TypeInfo)]
+    #[allow(clippy::cast_possible_truncation)]
     pub enum ContractError {
         AccessControlError(AccessControlError),
         RaffleError(RaffleError),
-        RollupAnchorError(RollupAnchorError),
+        RollupClientError(RollupClientError),
         TransferError,
     }
 
@@ -103,23 +112,25 @@ pub mod lotto_registration_contract {
     }
 
     /// convertor from RaffleError to ContractError
-    impl From<RollupAnchorError> for ContractError {
-        fn from(error: RollupAnchorError) -> Self {
-            ContractError::RollupAnchorError(error)
+    impl From<RollupClientError> for ContractError {
+        fn from(error: RollupClientError) -> Self {
+            ContractError::RollupClientError(error)
         }
     }
 
-    /// convertor from ContractError to RollupAnchorError
-    impl From<ContractError> for RollupAnchorError {
+    /// convertor from ContractError to RollupClientError
+    impl From<ContractError> for RollupClientError {
         fn from(error: ContractError) -> Self {
             ink::env::debug_println!("Error: {:?}", error);
-            RollupAnchorError::UnsupportedAction
+            RollupClientError::UnsupportedAction
         }
     }
 
     /// Message to request for action
     /// Message sent by the offchain rollup to the Ink! smart contract
-    #[derive(scale::Encode, scale::Decode)]
+    #[derive(Eq, PartialEq, Clone, Debug)]
+    #[ink::scale_derive(Encode, Decode)]
+    #[allow(clippy::cast_possible_truncation)]
     pub enum RequestForAction {
         /// update the config, set the registration contract id for this contract and start the workflow
         SetConfigAndStart(Config, RegistrationContractId),
@@ -134,27 +145,16 @@ pub mod lotto_registration_contract {
     }
 
     // Contract storage
+    #[derive(Default, Debug)]
     #[ink(storage)]
-    #[derive(Default, Storage)]
     pub struct Contract {
-        #[storage_field]
-        ownable: ownable::Data,
-        #[storage_field]
-        access: access_control::Data,
-        #[storage_field]
-        rollup_anchor: rollup_anchor::Data,
-        #[storage_field]
-        meta_transaction: meta_transaction::Data,
-        #[storage_field]
-        config: config::Data,
+        ownable: OwnableData,
+        access_control: AccessControlData,
+        kv_store: KvStoreData,
+        meta_transaction: MetaTransactionData,
+        config: ConfigData,
         registration_contract_id: RegistrationContractId,
     }
-
-    impl RaffleConfig for Contract {}
-    impl Raffle for Contract {}
-
-    impl RollupAnchor for Contract {}
-    impl MetaTransaction for Contract {}
 
     impl Contract {
         #[ink(constructor)]
@@ -162,18 +162,17 @@ pub mod lotto_registration_contract {
             let mut instance = Self::default();
             let caller = instance.env().caller();
             // set the owner of this contract
-            ownable::Internal::_init_with_owner(&mut instance, caller);
-            // set the admin of this contract
-            access_control::Internal::_init_with_admin(&mut instance, Some(caller));
+            BaseOwnable::init_with_owner(&mut instance, caller);
+            BaseAccessControl::init_with_admin(&mut instance, caller);
             instance
         }
 
         #[ink(message)]
         pub fn participate(&mut self, numbers: Vec<Number>) -> Result<(), ContractError> {
             // check if the numbers are correct
-            RaffleConfig::check_numbers(self, &numbers)?;
+            BaseRaffleConfig::check_numbers(self, &numbers)?;
             // check if the user can participate (raffle is open)
-            Raffle::check_can_participate(self)?;
+            BaseRaffle::check_can_participate(self)?;
             // save the participation with an event
             let participant = Self::env().caller();
             let registration_contract_id = self.registration_contract_id;
@@ -219,7 +218,7 @@ pub mod lotto_registration_contract {
             self.registration_contract_id = registration_contract_id;
 
             // update the config
-            RaffleConfig::set_config(self, config)?;
+            BaseRaffleConfig::set_config(self, config)?;
 
             // emit the event
             self.env().emit_event(ConfigUpdated {
@@ -227,7 +226,7 @@ pub mod lotto_registration_contract {
             });
 
             // start the workflow
-            Raffle::start(self)?;
+            BaseRaffle::start(self)?;
 
             // emit the event
             self.env().emit_event(Started {
@@ -242,7 +241,7 @@ pub mod lotto_registration_contract {
             draw_number: DrawNumber,
         ) -> Result<(), ContractError> {
             // Open the registrations
-            Raffle::open_registrations(self, draw_number)?;
+            BaseRaffle::open_registrations(self, draw_number)?;
 
             // emit the event
             let registration_contract_id = self.registration_contract_id;
@@ -259,7 +258,7 @@ pub mod lotto_registration_contract {
             draw_number: DrawNumber,
         ) -> Result<(), ContractError> {
             // Close the registrations
-            Raffle::close_registrations(self, draw_number)?;
+            BaseRaffle::close_registrations(self, draw_number)?;
 
             // emit the event
             let registration_contract_id = self.registration_contract_id;
@@ -276,7 +275,7 @@ pub mod lotto_registration_contract {
             draw_number: DrawNumber,
         ) -> Result<(), ContractError> {
             // Generate the salt
-            Raffle::generate_salt(self, draw_number)?;
+            BaseRaffle::generate_salt(self, draw_number)?;
 
             // emit the event
             let registration_contract_id = self.registration_contract_id;
@@ -295,10 +294,10 @@ pub mod lotto_registration_contract {
             has_winner: bool,
         ) -> Result<(), ContractError> {
             // check if the numbers satisfies the config
-            RaffleConfig::check_numbers(self, &numbers)?;
+            BaseRaffleConfig::check_numbers(self, &numbers)?;
 
             // save the results
-            Raffle::save_results(self, draw_number, numbers.clone(), has_winner)?;
+            BaseRaffle::save_results(self, draw_number, numbers.clone(), has_winner)?;
 
             // emmit the event
             let registration_contract_id = self.registration_contract_id;
@@ -313,12 +312,12 @@ pub mod lotto_registration_contract {
         }
 
         #[ink(message)]
-        #[modifiers(only_role(DEFAULT_ADMIN_ROLE))]
+        //#[modifiers(only_role(DEFAULT_ADMIN_ROLE))]
         pub fn register_attestor(
             &mut self,
             account_id: AccountId,
         ) -> Result<(), AccessControlError> {
-            AccessControl::grant_role(self, ATTESTOR_ROLE, Some(account_id))?;
+            AccessControl::grant_role(self, ATTESTOR_ROLE, account_id)?;
             Ok(())
         }
 
@@ -328,13 +327,13 @@ pub mod lotto_registration_contract {
         }
 
         #[ink(message)]
-        #[modifiers(only_role(DEFAULT_ADMIN_ROLE))]
+        //#[modifiers(only_role(DEFAULT_ADMIN_ROLE))]
         pub fn terminate_me(&mut self) -> Result<(), ContractError> {
             self.env().terminate_contract(self.env().caller());
         }
 
         #[ink(message)]
-        #[openbrush::modifiers(only_role(DEFAULT_ADMIN_ROLE))]
+        //#[openbrush::modifiers(only_role(DEFAULT_ADMIN_ROLE))]
         pub fn withdraw(&mut self, value: Balance) -> Result<(), ContractError> {
             let caller = Self::env().caller();
             self.env()
@@ -344,11 +343,12 @@ pub mod lotto_registration_contract {
         }
     }
 
-    impl rollup_anchor::MessageHandler for Contract {
-        fn on_message_received(&mut self, action: Vec<u8>) -> Result<(), RollupAnchorError> {
+    /// Implement the business logic for the Rollup Client in the 'on_message_received' method
+    impl BaseRollupClient for Contract {
+        fn on_message_received(&mut self, action: Vec<u8>) -> Result<(), RollupClientError> {
             // parse the response
-            let request: RequestForAction = scale::Decode::decode(&mut &action[..])
-                .or(Err(RollupAnchorError::FailedToDecode))?;
+            let request: RequestForAction = ink::scale::Decode::decode(&mut &action[..])
+                .or(Err(RollupClientError::FailedToDecode))?;
 
             match request {
                 RequestForAction::SetConfigAndStart(config, registration_contract_id) => {
@@ -372,18 +372,194 @@ pub mod lotto_registration_contract {
         }
     }
 
-    impl rollup_anchor::EventBroadcaster for Contract {
-        fn emit_event_message_queued(&self, _id: u32, _data: Vec<u8>) {
-            // nothing because the message queue is not used in this contract
+
+    /// Boilerplate code to manage the RaffleConfig
+    impl RaffleConfigStorage for Contract {
+        fn get_storage(&self) -> &ConfigData {
+            &self.config
         }
-        fn emit_event_message_processed_to(&self, _id: u32) {
-            // nothing because an event is already emitted in the different methods
+
+        fn get_mut_storage(&mut self) -> &mut ConfigData {
+            &mut self.config
         }
     }
 
-    impl meta_transaction::EventBroadcaster for Contract {
-        fn emit_event_meta_tx_decoded(&self) {
-            // do nothing, we don't care
+    impl BaseRaffleConfig for Contract {}
+
+    impl RaffleConfig for Contract {
+        #[ink(message)]
+        fn get_config(&self) -> Option<Config> {
+            self.inner_get_config()
         }
     }
+
+    /// Boilerplate code to manage the Raffle
+
+    impl BaseRaffle for Contract {}
+
+    impl Raffle for Contract {
+
+        #[ink(message)]
+        fn can_participate(&mut self) -> bool {
+            self.inner_can_participate()
+        }
+
+        #[ink(message)]
+        fn get_draw_number(&self) -> Result<DrawNumber, RaffleError> {
+            self.inner_get_draw_number()
+        }
+
+        #[ink(message)]
+        fn get_status(&self) -> Result<Status, RaffleError> {
+            self.inner_get_status()
+        }
+
+    }
+
+    /// Boilerplate code to manage the ownership
+    impl OwnableStorage for Contract {
+        fn get_storage(&self) -> &OwnableData {
+            &self.ownable
+        }
+
+        fn get_mut_storage(&mut self) -> &mut OwnableData {
+            &mut self.ownable
+        }
+    }
+
+    impl BaseOwnable for Contract {}
+
+    impl Ownable for Contract {
+        #[ink(message)]
+        fn get_owner(&self) -> Option<AccountId> {
+            self.inner_get_owner()
+        }
+
+        #[ink(message)]
+        fn renounce_ownership(&mut self) -> Result<(), OwnableError> {
+            self.inner_renounce_ownership()
+        }
+
+        #[ink(message)]
+        fn transfer_ownership(&mut self, new_owner: Option<AccountId>) -> Result<(), OwnableError> {
+            self.inner_transfer_ownership(new_owner)
+        }
+    }
+
+    /// Boilerplate code to implement the access control
+    impl AccessControlStorage for Contract {
+        fn get_storage(&self) -> &AccessControlData {
+            &self.access_control
+        }
+
+        fn get_mut_storage(&mut self) -> &mut AccessControlData {
+            &mut self.access_control
+        }
+    }
+
+    impl BaseAccessControl for Contract {}
+
+    impl AccessControl for Contract {
+        #[ink(message)]
+        fn has_role(&self, role: RoleType, account: AccountId) -> bool {
+            self.inner_has_role(role, account)
+        }
+
+        #[ink(message)]
+        fn grant_role(
+            &mut self,
+            role: RoleType,
+            account: AccountId,
+        ) -> Result<(), AccessControlError> {
+            self.inner_grant_role(role, account)
+        }
+
+        #[ink(message)]
+        fn revoke_role(
+            &mut self,
+            role: RoleType,
+            account: AccountId,
+        ) -> Result<(), AccessControlError> {
+            self.inner_revoke_role(role, account)
+        }
+
+        #[ink(message)]
+        fn renounce_role(&mut self, role: RoleType) -> Result<(), AccessControlError> {
+            self.inner_renounce_role(role)
+        }
+    }
+
+    /// Boilerplate code to implement the Key Value Store
+    impl KvStoreStorage for Contract {
+        fn get_storage(&self) -> &KvStoreData {
+            &self.kv_store
+        }
+
+        fn get_mut_storage(&mut self) -> &mut KvStoreData {
+            &mut self.kv_store
+        }
+    }
+
+    impl KvStore for Contract {}
+
+    /// Boilerplate code to implement the Message Queue
+    impl MessageQueue for Contract {}
+
+    /// Boilerplate code to implement the Rollup Client
+    impl RollupClient for Contract {
+        #[ink(message)]
+        fn get_value(&self, key: Key) -> Option<Value> {
+            self.inner_get_value(&key)
+        }
+
+        #[ink(message)]
+        fn has_message(&self) -> Result<bool, RollupClientError> {
+            MessageQueue::has_message(self)
+        }
+
+        #[ink(message)]
+        fn rollup_cond_eq(
+            &mut self,
+            conditions: Vec<(Key, Option<Value>)>,
+            updates: Vec<(Key, Option<Value>)>,
+            actions: Vec<HandleActionInput>,
+        ) -> Result<(), RollupClientError> {
+            self.inner_rollup_cond_eq(conditions, updates, actions)
+        }
+    }
+
+    /// Boilerplate code to implement the Meta Transaction
+    impl MetaTransactionStorage for Contract {
+        fn get_storage(&self) -> &MetaTransactionData {
+            &self.meta_transaction
+        }
+
+        fn get_mut_storage(&mut self) -> &mut MetaTransactionData {
+            &mut self.meta_transaction
+        }
+    }
+
+    impl BaseMetaTransaction for Contract {}
+
+    impl MetaTransaction for Contract {
+        #[ink(message)]
+        fn prepare(
+            &self,
+            from: AccountId,
+            data: Vec<u8>,
+        ) -> Result<(ForwardRequest, Hash), RollupClientError> {
+            self.inner_prepare(from, data)
+        }
+
+        #[ink(message)]
+        fn meta_tx_rollup_cond_eq(
+            &mut self,
+            request: ForwardRequest,
+            signature: [u8; 65],
+        ) -> Result<(), RollupClientError> {
+            self.inner_meta_tx_rollup_cond_eq(request, signature)
+        }
+    }
+
+
 }
