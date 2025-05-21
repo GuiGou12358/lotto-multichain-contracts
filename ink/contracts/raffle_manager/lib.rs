@@ -178,7 +178,7 @@ pub mod lotto_registration_manager_contract {
     }
 
     // Contract storage
-    #[derive(Default, Debug)]
+    #[derive(Default)]
     #[ink(storage)]
     pub struct Contract {
         ownable: OwnableData,
@@ -971,5 +971,52 @@ pub mod lotto_registration_manager_contract {
 
         }
 
+    }
+
+
+    #[cfg(all(test, feature = "e2e-tests"))]
+    mod e2e_tests {
+        use super::*;
+        use ink_e2e::{ContractsBackend, E2EBackend};
+
+        type E2EResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+
+        #[ink_e2e::test]
+        async fn test_raffles<Client: E2EBackend>(mut client: Client) -> E2EResult<()> {
+            // given
+
+            /*
+            let mut lotto_constructor = ContractRef::new();
+            let contract = client
+                .instantiate(
+                    "lotto_registration_manager_contract",
+                    &ink_e2e::alice(),
+                    &mut lotto_constructor
+                )
+                .submit()
+                .await
+                .expect("instantiate failed");
+
+             */
+/*
+            let config = Config {
+                nb_numbers: 4,
+                min_number: 1,
+                max_number: 50,
+            };
+
+            let set_config = contract.call_builder::<Contract>()
+                .set_config(config);
+            client
+                .call(&ink_e2e::alice(), &set_config)
+                .submit()
+                .await
+                .expect("set config failed");
+
+ */
+
+
+            Ok(())
+        }
     }
 }

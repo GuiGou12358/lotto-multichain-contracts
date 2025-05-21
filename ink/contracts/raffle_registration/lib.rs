@@ -400,7 +400,7 @@ pub mod lotto_registration_contract {
     impl Raffle for Contract {
 
         #[ink(message)]
-        fn can_participate(&mut self) -> bool {
+        fn can_participate(&self) -> bool {
             self.inner_can_participate()
         }
 
