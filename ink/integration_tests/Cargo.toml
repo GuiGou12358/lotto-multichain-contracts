@@ -5,21 +5,17 @@ authors = ["guigou"]
 edition = "2021"
 
 [dependencies]
-ink = { version = "4.3.0", default-features = false}
-scale = { package = "parity-scale-codec", version = "3", default-features = false, features = ["derive"] }
-scale-info = { version = "2", default-features = false, features = ["derive"], optional = true }
-openbrush = { version = "4.0.0-beta", git = "https://github.com/Brushfam/openbrush-contracts", default-features = false, features = ["ownable", "access_control", "upgradeable"] }
-phat_rollup_anchor_ink = { git = "https://github.com/Phala-Network/phat-offchain-rollup" , default-features = false}
-
+ink = { version = "5.1.1", default-features = false }
+ink_client_lib = { git = "https://github.com/GuiGou12358/sc-rollup", default-features = false}
 lotto = { path = "../logic", default-features = false }
 lotto_registration_manager_contract = { path = "../contracts/raffle_manager", default-features = false, features = ["ink-as-dependency"] }
 lotto_registration_contract = { path = "../contracts/raffle_registration", default-features = false, features = ["ink-as-dependency"] }
 
 [dev-dependencies]
-ink_e2e = { version = "4.3.0" }
-hex-literal = { version = "0.4.1" }
+ink_e2e = { version = "5.1.1" }
+hex-literal = { version = "1.0.0" }
 hex = "0.4.3"
-subxt-signer = { version = "0.31.0" }
+subxt-signer = { version = "0.42.1" }
 
 [lib]
 path = "lib.rs"
@@ -28,10 +24,7 @@ path = "lib.rs"
 default = ["std"]
 std = [
     "ink/std",
-    "scale/std",
-    "scale-info/std",
-    "openbrush/std",
-    "phat_rollup_anchor_ink/std",
+    "ink_client_lib/std",
     "lotto/std",
     "lotto_registration_manager_contract/std",
     "lotto_registration_contract/std",
