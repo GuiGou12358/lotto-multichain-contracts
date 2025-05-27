@@ -11,9 +11,9 @@ use lotto::raffle_registration::Raffle;
 
 use lotto_registration_contract::{lotto_registration_contract, *};
 
-use ink_client_lib::traits::access_control::{AccessControl};
-use ink_client_lib::traits::meta_transaction::{MetaTransaction};
-use ink_client_lib::traits::rollup_client::{
+use inkv5_client_lib::traits::access_control::{AccessControl};
+use inkv5_client_lib::traits::meta_transaction::{MetaTransaction};
+use inkv5_client_lib::traits::rollup_client::{
     HandleActionInput, RollupClient, RollupCondEqMethodParams, ATTESTOR_ROLE
 };
 

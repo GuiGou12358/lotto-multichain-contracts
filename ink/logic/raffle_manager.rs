@@ -2,7 +2,7 @@ use crate::error::{RaffleError, RaffleError::*};
 use crate::{AccountId20, AccountId32, DrawNumber, Number, RegistrationContractId, Salt};
 use ink::prelude::vec::Vec;
 use ink::storage::Mapping;
-use ink_client_lib::traits::kv_store::KvStore;
+use inkv5_client_lib::traits::kv_store::KvStore;
 use ink::scale::{Decode, Encode};
 
 const STATUS: u32 = ink::selector_id!("STATUS");

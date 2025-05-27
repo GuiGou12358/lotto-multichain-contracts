@@ -4,23 +4,23 @@
 pub mod lotto_contract {
     use crate::{config::*, raffle_manager::{BaseRaffleManager, RaffleManagerData}, error::RaffleError, DrawNumber};
 
-    use ink_client_lib::traits::access_control::{
+    use inkv5_client_lib::traits::access_control::{
         AccessControl, AccessControlData, AccessControlError, AccessControlStorage,
         BaseAccessControl, RoleType,
     };
-    use ink_client_lib::traits::kv_store::{Key, KvStore, KvStoreData, KvStoreStorage, Value};
-    use ink_client_lib::traits::message_queue::{MessageQueue};
-    use ink_client_lib::traits::meta_transaction::{
+    use inkv5_client_lib::traits::kv_store::{Key, KvStore, KvStoreData, KvStoreStorage, Value};
+    use inkv5_client_lib::traits::message_queue::{MessageQueue};
+    use inkv5_client_lib::traits::meta_transaction::{
         BaseMetaTransaction, ForwardRequest, MetaTransaction, MetaTransactionData,
         MetaTransactionStorage,
     };
-    use ink_client_lib::traits::ownable::{
+    use inkv5_client_lib::traits::ownable::{
         BaseOwnable, Ownable, OwnableData, OwnableError, OwnableStorage,
     };
-    use ink_client_lib::traits::rollup_client::{
+    use inkv5_client_lib::traits::rollup_client::{
         BaseRollupClient, HandleActionInput, RollupClient
     };
-    use ink_client_lib::traits::RollupClientError;
+    use inkv5_client_lib::traits::RollupClientError;
 
     // Contract storage
     #[derive(Default)]

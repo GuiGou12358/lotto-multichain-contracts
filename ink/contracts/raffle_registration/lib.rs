@@ -5,23 +5,23 @@ pub mod lotto_registration_contract {
     use ink::prelude::vec::Vec;
     use lotto::{config::*, error::*, raffle_registration::*, DrawNumber, Number, RegistrationContractId};
 
-    use ink_client_lib::traits::access_control::{
+    use inkv5_client_lib::traits::access_control::{
         AccessControl, AccessControlData, AccessControlError, AccessControlStorage,
         BaseAccessControl, RoleType,
     };
-    use ink_client_lib::traits::kv_store::{Key, KvStore, KvStoreData, KvStoreStorage, Value};
-    use ink_client_lib::traits::message_queue::{MessageQueue};
-    use ink_client_lib::traits::meta_transaction::{
+    use inkv5_client_lib::traits::kv_store::{Key, KvStore, KvStoreData, KvStoreStorage, Value};
+    use inkv5_client_lib::traits::message_queue::{MessageQueue};
+    use inkv5_client_lib::traits::meta_transaction::{
         BaseMetaTransaction, ForwardRequest, MetaTransaction, MetaTransactionData,
         MetaTransactionStorage,
     };
-    use ink_client_lib::traits::ownable::{
+    use inkv5_client_lib::traits::ownable::{
         BaseOwnable, Ownable, OwnableData, OwnableError, OwnableStorage,
     };
-    use ink_client_lib::traits::rollup_client::{
+    use inkv5_client_lib::traits::rollup_client::{
         BaseRollupClient, HandleActionInput, RollupClient, ATTESTOR_ROLE
     };
-    use ink_client_lib::traits::RollupClientError;
+    use inkv5_client_lib::traits::RollupClientError;
 
     /// Event emitted when the config is updated
     #[ink(event)]

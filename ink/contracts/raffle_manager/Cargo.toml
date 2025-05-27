@@ -6,7 +6,7 @@ edition = "2021"
 
 [dependencies]
 ink = { version = "5.1.1", default-features = false }
-ink_client_lib = { git = "https://github.com/GuiGou12358/sc-rollup", default-features = false}
+inkv5_client_lib = { git = "https://github.com/GuiGou12358/sc-rollup", default-features = false}
 lotto = { path = "../../logic", default-features = false }
 
 [dev-dependencies]
@@ -19,13 +19,7 @@ path = "lib.rs"
 default = ["std"]
 std = [
     "ink/std",
-    "ink_client_lib/std",
+    "inkv5_client_lib/std",
     "lotto/std",
 ]
 ink-as-dependency = []
-
-[profile.release]
-overflow-checks = false
-
-[profile.dev]
-overflow-checks = false

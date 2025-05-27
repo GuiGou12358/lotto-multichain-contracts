@@ -1,7 +1,7 @@
 use crate::error::{RaffleError, RaffleError::*};
 use crate::{DrawNumber, Number};
 use ink::prelude::vec::Vec;
-use ink_client_lib::traits::kv_store::KvStore;
+use inkv5_client_lib::traits::kv_store::KvStore;
 use ink::scale::{Decode, Encode};
 
 const STATUS: u32 = ink::selector_id!("STATUS");
