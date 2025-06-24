@@ -4,30 +4,18 @@
 pub mod lotto_registration_manager_contract {
     use ink::prelude::vec::Vec;
     use ink::scale::Encode;
+    use inkv5_client_lib::only_role;
+    use inkv5_client_lib::traits::access_control::*;
+    use inkv5_client_lib::traits::kv_store::*;
+    use inkv5_client_lib::traits::message_queue::*;
+    use inkv5_client_lib::traits::meta_transaction::*;
+    use inkv5_client_lib::traits::rollup_client::*;
+    use inkv5_client_lib::traits::*;
     use lotto::{
-        config::*, error::*, raffle_manager::*,
-        AccountId20, AccountId32, DrawNumber, Number,
+        config::*, error::*, raffle_manager::*, AccountId20, AccountId32, DrawNumber, Number,
         RegistrationContractId, Salt,
     };
-    use inkv5_client_lib::traits::access_control::{
-        AccessControl, AccessControlData, AccessControlError, AccessControlStorage,
-        BaseAccessControl, RoleType,
-    };
-    use inkv5_client_lib::traits::kv_store::{Key, KvStore, KvStoreData, KvStoreStorage, Value};
-    use inkv5_client_lib::traits::message_queue::{MessageQueue};
-    use inkv5_client_lib::traits::meta_transaction::{
-        BaseMetaTransaction, ForwardRequest, MetaTransaction, MetaTransactionData,
-        MetaTransactionStorage,
-    };
-    use inkv5_client_lib::traits::ownable::{
-        BaseOwnable, Ownable, OwnableData, OwnableError, OwnableStorage,
-    };
-    use inkv5_client_lib::traits::rollup_client::{
-        BaseRollupClient, HandleActionInput, RollupClient, ATTESTOR_ROLE
-    };
-    use inkv5_client_lib::traits::RollupClientError;
 
-    
     const LOTTO_MANAGER_ROLE: RoleType = ink::selector_id!("LOTTO_MANAGER");
 
     /// Event emitted when the lotto is started
@@ -129,12 +117,7 @@ pub mod lotto_registration_manager_contract {
         /// request to check if there is a winner for the given numbers
         CheckWinners(DrawNumber, Vec<Number>),
         /// request to propagate the results to all given contracts
-        PropagateResults(
-            DrawNumber,
-            Vec<Number>,
-            bool,
-            Vec<RegistrationContractId>,
-        ),
+        PropagateResults(DrawNumber, Vec<Number>, bool, Vec<RegistrationContractId>),
     }
 
     /// Offchain rollup response
@@ -181,10 +164,9 @@ pub mod lotto_registration_manager_contract {
     #[derive(Default)]
     #[ink(storage)]
     pub struct Contract {
-        ownable: OwnableData,
         access_control: AccessControlData,
         kv_store: KvStoreData,
-        meta_transaction: MetaTransactionData,        
+        meta_transaction: MetaTransactionData,
         config: ConfigData,
         raffle_manager: RaffleManagerData,
         number_of_blocks_for_participation: BlockNumber,
@@ -196,8 +178,6 @@ pub mod lotto_registration_manager_contract {
         pub fn new() -> Self {
             let mut instance = Self::default();
             let caller = instance.env().caller();
-            // set the owner of this contract
-            BaseOwnable::init_with_owner(&mut instance, caller);
             BaseAccessControl::init_with_admin(&mut instance, caller);
             // grant the role manager
             BaseAccessControl::inner_grant_role(&mut instance, LOTTO_MANAGER_ROLE, caller)
@@ -206,8 +186,8 @@ pub mod lotto_registration_manager_contract {
         }
 
         #[ink(message)]
-        //#[openbrush::modifiers(access_control::only_role(LOTTO_MANAGER_ROLE))]
         pub fn set_config(&mut self, config: Config) -> Result<(), ContractError> {
+            only_role!(self, LOTTO_MANAGER_ROLE);
             // check the status, we can set the config only when the raffle is not started yet
             let status = RaffleManager::get_status(self)?;
             if status != Status::NotStarted {
@@ -221,22 +201,19 @@ pub mod lotto_registration_manager_contract {
         }
 
         #[ink(message)]
-        //#[openbrush::modifiers(access_control::only_role(LOTTO_MANAGER_ROLE))]
         pub fn set_registration_contracts(
             &mut self,
             registration_contracts: Vec<RegistrationContractId>,
         ) -> Result<(), ContractError> {
+            only_role!(self, LOTTO_MANAGER_ROLE);
             // add registration contract
             BaseRaffleManager::set_registration_contracts(self, registration_contracts)?;
             Ok(())
         }
 
         #[ink(message)]
-        //#[openbrush::modifiers(access_control::only_role(LOTTO_MANAGER_ROLE))]
-        pub fn set_min_number_salts(
-            &mut self,
-            min_number_salts: u8,
-        ) -> Result<(), ContractError> {
+        pub fn set_min_number_salts(&mut self, min_number_salts: u8) -> Result<(), ContractError> {
+            only_role!(self, LOTTO_MANAGER_ROLE);
             // set the minimum number of salts
             BaseRaffleManager::set_min_number_salts(self, min_number_salts)?;
             Ok(())
@@ -250,22 +227,22 @@ pub mod lotto_registration_manager_contract {
 
         /// set the number of blocks to wait before closing the participation
         #[ink(message)]
-        //#[openbrush::modifiers(access_control::only_role(LOTTO_MANAGER_ROLE))]
         pub fn set_number_of_blocks_for_participation(
             &mut self,
             number_of_blocks_for_participation: BlockNumber,
         ) -> Result<(), ContractError> {
+            only_role!(self, LOTTO_MANAGER_ROLE);
             // set the number of blocks to wait before closing the participation
             self.number_of_blocks_for_participation = number_of_blocks_for_participation;
             Ok(())
         }
 
         #[ink(message)]
-        //#[openbrush::modifiers(access_control::only_role(LOTTO_MANAGER_ROLE))]
         pub fn start(
             &mut self,
             previous_draw_number: Option<DrawNumber>,
         ) -> Result<(), ContractError> {
+            only_role!(self, LOTTO_MANAGER_ROLE);
             // start
             BaseRaffleManager::start(self, previous_draw_number.unwrap_or_default())?;
             // propagate the config in all given contracts
@@ -332,7 +309,6 @@ pub mod lotto_registration_manager_contract {
             registration_contracts: Vec<RegistrationContractId>,
             config_hash: &[u8],
         ) -> Result<(), ContractError> {
-
             // check the config propagated to other contracts
             let config = BaseRaffleConfig::ensure_config(self)?;
             verify_hash(&config, config_hash)?;
@@ -444,38 +420,31 @@ pub mod lotto_registration_manager_contract {
                     // the salt is not generated
                     if missing_contracts.is_empty() {
                         // no missing contract => error
-                        return Err(ContractError::SaltCannotBeGenerated) ;//
+                        return Err(ContractError::SaltCannotBeGenerated); //
                     }
                     // synchronized missing contracts and wait
-                    let message = LottoManagerRequestMessage::GenerateSalt(
-                        draw_number,
-                        missing_contracts,
-                    );
+                    let message =
+                        LottoManagerRequestMessage::GenerateSalt(draw_number, missing_contracts);
                     MessageQueue::push_message(self, &message)?;
                     Ok(())
                 }
                 (Some(salt), _) => {
                     // the salt is generated, request the draw numbers
                     let config = BaseRaffleConfig::ensure_config(self)?;
-                    let message = LottoManagerRequestMessage::DrawNumbers(draw_number, config, salt);
+                    let message =
+                        LottoManagerRequestMessage::DrawNumbers(draw_number, config, salt);
                     MessageQueue::push_message(self, &message)?;
                     Ok(())
                 }
             }
         }
 
-
         fn handle_salt_generated(
             &mut self,
             draw_number: DrawNumber,
             contracts_salts: Vec<(RegistrationContractId, Salt)>,
         ) -> Result<(), ContractError> {
-
-            BaseRaffleManager::save_salts(
-                self,
-                draw_number,
-                contracts_salts
-            )?;
+            BaseRaffleManager::save_salts(self, draw_number, contracts_salts)?;
 
             self.inner_try_to_generate_salt(draw_number)?;
 
@@ -488,11 +457,11 @@ pub mod lotto_registration_manager_contract {
             numbers: Vec<Number>,
             config_hash: &[u8],
         ) -> Result<(), ContractError> {
-
             // check the config used is correct
             let config = BaseRaffleConfig::ensure_config(self)?;
             // check the salt used by the VRF
-            let generated_salt = RaffleManager::get_generated_salt(self, draw_number).ok_or(ContractError::SaltNotGenerated)?;
+            let generated_salt = RaffleManager::get_generated_salt(self, draw_number)
+                .ok_or(ContractError::SaltNotGenerated)?;
             // check the config and salt used are correct
             verify_hash(&(config, generated_salt), config_hash)?;
 
@@ -526,13 +495,17 @@ pub mod lotto_registration_manager_contract {
             winners_evm: Vec<AccountId20>,
             results_hash: &[u8],
         ) -> Result<(), ContractError> {
-
             // check if the winners were selected based on the correct numbers
-            let results = RaffleManager::get_results(self, draw_number).ok_or(ContractError::NoResult)?;
+            let results =
+                RaffleManager::get_results(self, draw_number).ok_or(ContractError::NoResult)?;
             verify_hash(&results, results_hash)?;
 
             // set the winners in the raffle
-            BaseRaffleManager::set_winners(self, draw_number, (winners_substrate.clone(), winners_evm.clone()))?;
+            BaseRaffleManager::set_winners(
+                self,
+                draw_number,
+                (winners_substrate.clone(), winners_evm.clone()),
+            )?;
 
             // emmit the event
             self.env().emit_event(WinnersRevealed {
@@ -561,9 +534,9 @@ pub mod lotto_registration_manager_contract {
             registration_contracts: Vec<RegistrationContractId>,
             results_hash: &[u8],
         ) -> Result<(), ContractError> {
-
             // check if the results propagated are correct
-            let results = RaffleManager::get_results(self, draw_number).ok_or(ContractError::NoResult)?;
+            let results =
+                RaffleManager::get_results(self, draw_number).ok_or(ContractError::NoResult)?;
             verify_hash(&results, results_hash)?;
 
             let not_synchronized_contracts = BaseRaffleManager::save_registration_contracts_status(
@@ -603,11 +576,11 @@ pub mod lotto_registration_manager_contract {
         }
 
         #[ink(message)]
-        //#[modifiers(only_role(DEFAULT_ADMIN_ROLE))]
         pub fn register_attestor(
             &mut self,
             account_id: AccountId,
         ) -> Result<(), AccessControlError> {
+            only_role!(self, ADMIN_ROLE);
             AccessControl::grant_role(self, ATTESTOR_ROLE, account_id)?;
             Ok(())
         }
@@ -623,21 +596,20 @@ pub mod lotto_registration_manager_contract {
         }
 
         #[ink(message)]
-        //#[modifiers(only_role(DEFAULT_ADMIN_ROLE))]
         pub fn terminate_me(&mut self) -> Result<(), ContractError> {
+            only_role!(self, ADMIN_ROLE);
             self.env().terminate_contract(self.env().caller());
         }
 
         #[ink(message)]
-        //#[openbrush::modifiers(only_role(DEFAULT_ADMIN_ROLE))]
         pub fn withdraw(&mut self, value: Balance) -> Result<(), ContractError> {
+            only_role!(self, ADMIN_ROLE);
             let caller = Self::env().caller();
             self.env()
                 .transfer(caller, value)
                 .map_err(|_| ContractError::TransferError)?;
             Ok(())
         }
-
     }
 
     fn verify_hash<T: ink::scale::Encode>(
@@ -657,12 +629,12 @@ pub mod lotto_registration_manager_contract {
         Ok(())
     }
 
-
     /// Implement the business logic for the Rollup Client in the 'on_message_received' method
     impl BaseRollupClient for Contract {
         fn on_message_received(&mut self, action: Vec<u8>) -> Result<(), RollupClientError> {
-            let response: LottoManagerResponseMessage = ink::scale::Decode::decode(&mut &action[..])
-                .or(Err(RollupClientError::FailedToDecode))?;
+            let response: LottoManagerResponseMessage =
+                ink::scale::Decode::decode(&mut &action[..])
+                    .or(Err(RollupClientError::FailedToDecode))?;
 
             match response {
                 LottoManagerResponseMessage::ConfigPropagated(contract_ids, ref hash) => {
@@ -685,7 +657,12 @@ pub mod lotto_registration_manager_contract {
                 LottoManagerResponseMessage::WinningNumbers(draw_number, numbers, ref hash) => {
                     self.handle_winning_numbers(draw_number, numbers, hash.as_ref())?
                 }
-                LottoManagerResponseMessage::Winners(draw_number, winners_substrate, winners_evm , ref hash) => {
+                LottoManagerResponseMessage::Winners(
+                    draw_number,
+                    winners_substrate,
+                    winners_evm,
+                    ref hash,
+                ) => {
                     self.handle_winners(draw_number, winners_substrate, winners_evm, hash.as_ref())?
                 }
                 LottoManagerResponseMessage::CloseRegistrations() => {
@@ -698,7 +675,6 @@ pub mod lotto_registration_manager_contract {
             Ok(())
         }
     }
-
 
     /// Boilerplate code to manage the RaffleConfig
     impl RaffleConfigStorage for Contract {
@@ -734,7 +710,6 @@ pub mod lotto_registration_manager_contract {
     impl BaseRaffleManager for Contract {}
 
     impl RaffleManager for Contract {
-
         #[ink(message)]
         fn get_min_number_salts(&self) -> u8 {
             self.inner_get_min_number_salts()
@@ -746,7 +721,7 @@ pub mod lotto_registration_manager_contract {
         }
 
         #[ink(message)]
-        fn get_status(&self) -> Result<Status, RaffleError>  {
+        fn get_status(&self) -> Result<Status, RaffleError> {
             self.inner_get_status()
         }
 
@@ -764,7 +739,7 @@ pub mod lotto_registration_manager_contract {
         }
 
         #[ink(message)]
-        fn get_generated_salt(&self, draw_number: DrawNumber) -> Option<Salt>  {
+        fn get_generated_salt(&self, draw_number: DrawNumber) -> Option<Salt> {
             self.inner_get_generated_salt(draw_number)
         }
 
@@ -776,36 +751,6 @@ pub mod lotto_registration_manager_contract {
         #[ink(message)]
         fn get_winners(&self, draw_number: DrawNumber) -> Option<Winners> {
             self.inner_get_winners(draw_number)
-        }
-    }
-
-    /// Boilerplate code to manage the ownership
-    impl OwnableStorage for Contract {
-        fn get_storage(&self) -> &OwnableData {
-            &self.ownable
-        }
-
-        fn get_mut_storage(&mut self) -> &mut OwnableData {
-            &mut self.ownable
-        }
-    }
-
-    impl BaseOwnable for Contract {}
-
-    impl Ownable for Contract {
-        #[ink(message)]
-        fn get_owner(&self) -> Option<AccountId> {
-            self.inner_get_owner()
-        }
-
-        #[ink(message)]
-        fn renounce_ownership(&mut self) -> Result<(), OwnableError> {
-            self.inner_renounce_ownership()
-        }
-
-        #[ink(message)]
-        fn transfer_ownership(&mut self, new_owner: Option<AccountId>) -> Result<(), OwnableError> {
-            self.inner_transfer_ownership(new_owner)
         }
     }
 
@@ -923,7 +868,6 @@ pub mod lotto_registration_manager_contract {
             self.inner_meta_tx_rollup_cond_eq(request, signature)
         }
     }
-    
 
     #[cfg(test)]
     mod tests {
@@ -936,7 +880,9 @@ pub mod lotto_registration_manager_contract {
                 min_number: 1,
                 max_number: 50,
             };
-            let hash: Vec<u8> = hex::decode("1af688b7e4ccbd51529a15d28753270a04adf361d4eb1cbd9553ef19d353c656").expect("hex decode failed");
+            let hash: Vec<u8> =
+                hex::decode("1af688b7e4ccbd51529a15d28753270a04adf361d4eb1cbd9553ef19d353c656")
+                    .expect("hex decode failed");
             assert_eq!(verify_hash(&config, &hash), Ok(()));
         }
 
@@ -948,31 +894,42 @@ pub mod lotto_registration_manager_contract {
                 max_number: 50,
             };
 
-            let salt : Salt = [101, 183, 131, 128, 194, 210, 6, 186, 135, 158, 6, 247, 69, 144, 120, 98, 45, 169, 95, 8, 91, 222, 225, 175, 72, 14, 187, 148, 7, 210, 251, 70].to_vec();
-            let hash: Vec<u8> = hex::decode("94e1fa775bc259340a60dda2a2f10e911b6343e6ab0932726c738097c8fc3521").expect("hex decode failed");
+            let salt: Salt = [
+                101, 183, 131, 128, 194, 210, 6, 186, 135, 158, 6, 247, 69, 144, 120, 98, 45, 169,
+                95, 8, 91, 222, 225, 175, 72, 14, 187, 148, 7, 210, 251, 70,
+            ]
+            .to_vec();
+            let hash: Vec<u8> =
+                hex::decode("94e1fa775bc259340a60dda2a2f10e911b6343e6ab0932726c738097c8fc3521")
+                    .expect("hex decode failed");
             assert_eq!(verify_hash(&(config, salt), &hash), Ok(()));
 
-            let salt : Salt = [94, 193, 212, 179, 22, 80, 18, 236, 194, 56, 99, 20, 16, 125, 123, 20, 14, 26, 212, 42, 96, 187, 51, 110, 129, 113, 120, 162, 223, 50, 36, 79].to_vec();
-            let hash: Vec<u8> = hex::decode("c6aac4e20883f260241bbae6963be7ae78d9cc0136f0a2409aa40e0fdef11cb1").expect("hex decode failed");
+            let salt: Salt = [
+                94, 193, 212, 179, 22, 80, 18, 236, 194, 56, 99, 20, 16, 125, 123, 20, 14, 26, 212,
+                42, 96, 187, 51, 110, 129, 113, 120, 162, 223, 50, 36, 79,
+            ]
+            .to_vec();
+            let hash: Vec<u8> =
+                hex::decode("c6aac4e20883f260241bbae6963be7ae78d9cc0136f0a2409aa40e0fdef11cb1")
+                    .expect("hex decode failed");
             assert_eq!(verify_hash(&(config, salt), &hash), Ok(()));
-
         }
 
         #[ink::test]
         fn test_verify_numbers_hash() {
-
             let numbers: Vec<Number> = vec![5, 40, 8, 2];
-            let hash: Vec<u8> = hex::decode("0c70b0cb9b2d87768d1efacd6ca6a89be08a4c8c70855b54455f7f46caeeb155").expect("hex decode failed");
+            let hash: Vec<u8> =
+                hex::decode("0c70b0cb9b2d87768d1efacd6ca6a89be08a4c8c70855b54455f7f46caeeb155")
+                    .expect("hex decode failed");
             assert_eq!(verify_hash(&numbers, &hash), Ok(()));
 
             let numbers: Vec<Number> = vec![15, 20, 1, 31];
-            let hash: Vec<u8> = hex::decode("2a8b8764a606b81095017886e6e46482bf2f248969279ea3c063265b060794ae").expect("hex decode failed");
+            let hash: Vec<u8> =
+                hex::decode("2a8b8764a606b81095017886e6e46482bf2f248969279ea3c063265b060794ae")
+                    .expect("hex decode failed");
             assert_eq!(verify_hash(&numbers, &hash), Ok(()));
-
         }
-
     }
-
 
     #[cfg(all(test, feature = "e2e-tests"))]
     mod e2e_tests {
@@ -998,23 +955,22 @@ pub mod lotto_registration_manager_contract {
                 .expect("instantiate failed");
 
              */
-/*
-            let config = Config {
-                nb_numbers: 4,
-                min_number: 1,
-                max_number: 50,
-            };
+            /*
+                       let config = Config {
+                           nb_numbers: 4,
+                           min_number: 1,
+                           max_number: 50,
+                       };
 
-            let set_config = contract.call_builder::<Contract>()
-                .set_config(config);
-            client
-                .call(&ink_e2e::alice(), &set_config)
-                .submit()
-                .await
-                .expect("set config failed");
+                       let set_config = contract.call_builder::<Contract>()
+                           .set_config(config);
+                       client
+                           .call(&ink_e2e::alice(), &set_config)
+                           .submit()
+                           .await
+                           .expect("set config failed");
 
- */
-
+            */
 
             Ok(())
         }

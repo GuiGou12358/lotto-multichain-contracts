@@ -1,27 +1,30 @@
-use std::fmt::Debug;
 use ink::env::DefaultEnvironment;
 use ink::primitives::AccountId;
+use ink::scale::Encode;
 use ink_e2e::subxt::tx::Signer;
 use ink_e2e::{ContractsBackend, E2EBackend, InstantiationResult, PolkadotConfig};
-use ink::scale::Encode;
+use std::fmt::Debug;
 
 use lotto::config::Config;
-use lotto::*;
 use lotto::raffle_registration::Raffle;
+use lotto::*;
 
 use lotto_registration_contract::{lotto_registration_contract, *};
 
-use inkv5_client_lib::traits::access_control::{AccessControl};
-use inkv5_client_lib::traits::meta_transaction::{MetaTransaction};
+use inkv5_client_lib::traits::access_control::AccessControl;
+use inkv5_client_lib::traits::meta_transaction::MetaTransaction;
 use inkv5_client_lib::traits::rollup_client::{
-    HandleActionInput, RollupClient, RollupCondEqMethodParams, ATTESTOR_ROLE
+    HandleActionInput, RollupClient, RollupCondEqMethodParams, ATTESTOR_ROLE,
 };
 
 type E2EResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 async fn alice_instantiates_raffle_registration<Client>(
     client: &mut Client,
-) -> InstantiationResult<DefaultEnvironment,  <Client as ContractsBackend<DefaultEnvironment>>::EventLog>
+) -> InstantiationResult<
+    DefaultEnvironment,
+    <Client as ContractsBackend<DefaultEnvironment>>::EventLog,
+>
 where
     Client: E2EBackend,
     <Client as ContractsBackend<DefaultEnvironment>>::Error: Debug,
@@ -42,15 +45,18 @@ where
 
 async fn alice_grants_bob_as_attestor<Client>(
     client: &mut Client,
-    contract: &InstantiationResult<DefaultEnvironment,  <Client as ContractsBackend<DefaultEnvironment>>::EventLog>,
-)
-where
+    contract: &InstantiationResult<
+        DefaultEnvironment,
+        <Client as ContractsBackend<DefaultEnvironment>>::EventLog,
+    >,
+) where
     Client: E2EBackend,
     <Client as ContractsBackend<DefaultEnvironment>>::Error: Debug,
 {
     // bob is granted as attestor
     let bob_address = ink::primitives::AccountId::from(ink_e2e::bob().public_key().0);
-    let grant_role = contract.call_builder::<lotto_registration_contract::Contract>()
+    let grant_role = contract
+        .call_builder::<lotto_registration_contract::Contract>()
         .grant_role(ATTESTOR_ROLE, bob_address);
     client
         .call(&ink_e2e::alice(), &grant_role)
@@ -61,22 +67,24 @@ where
 
 async fn attestor_set_config_and_start<Client>(
     client: &mut Client,
-    contract: &InstantiationResult<DefaultEnvironment,  <Client as ContractsBackend<DefaultEnvironment>>::EventLog>,
+    contract: &InstantiationResult<
+        DefaultEnvironment,
+        <Client as ContractsBackend<DefaultEnvironment>>::EventLog,
+    >,
     config: Config,
     registration_contract_id: RegistrationContractId,
-)
-where
+) where
     Client: E2EBackend,
     <Client as ContractsBackend<DefaultEnvironment>>::Error: Debug,
 {
     let payload = RequestForAction::SetConfigAndStart(config.clone(), registration_contract_id);
 
     let actions = vec![HandleActionInput::Reply(payload.encode())];
-    let rollup_cond_eq =
-        contract.call_builder::<lotto_registration_contract::Contract>()
-            .rollup_cond_eq(vec![], vec![], actions.clone());
+    let rollup_cond_eq = contract
+        .call_builder::<lotto_registration_contract::Contract>()
+        .rollup_cond_eq(vec![], vec![], actions.clone());
 
-    let result = client
+    let _result = client
         .call(&ink_e2e::bob(), &rollup_cond_eq)
         .submit()
         .await
@@ -99,19 +107,21 @@ where
 
 async fn attestor_open_registrations<Client>(
     client: &mut Client,
-    contract: &InstantiationResult<DefaultEnvironment,  <Client as ContractsBackend<DefaultEnvironment>>::EventLog>,
+    contract: &InstantiationResult<
+        DefaultEnvironment,
+        <Client as ContractsBackend<DefaultEnvironment>>::EventLog,
+    >,
     draw_number: DrawNumber,
-)
-where
+) where
     Client: E2EBackend,
     <Client as ContractsBackend<DefaultEnvironment>>::Error: Debug,
 {
     let payload = RequestForAction::OpenRegistrations(draw_number);
 
     let actions = vec![HandleActionInput::Reply(payload.encode())];
-    let rollup_cond_eq =
-        contract.call_builder::<lotto_registration_contract::Contract>()
-            .rollup_cond_eq(vec![], vec![], actions.clone());
+    let rollup_cond_eq = contract
+        .call_builder::<lotto_registration_contract::Contract>()
+        .rollup_cond_eq(vec![], vec![], actions.clone());
 
     /*
               let result = client.call_dry_run(&ink_e2e::bob(), &rollup_cond_eq, 0, None).await;
@@ -121,7 +131,7 @@ where
               );
     */
 
-    let result = client
+    let _result = client
         .call(&ink_e2e::bob(), &rollup_cond_eq)
         .submit()
         .await
@@ -139,21 +149,23 @@ where
 
 async fn attestor_close_registrations<Client>(
     client: &mut Client,
-    contract: &InstantiationResult<DefaultEnvironment,  <Client as ContractsBackend<DefaultEnvironment>>::EventLog>,
+    contract: &InstantiationResult<
+        DefaultEnvironment,
+        <Client as ContractsBackend<DefaultEnvironment>>::EventLog,
+    >,
     draw_number: DrawNumber,
-)
-where
+) where
     Client: E2EBackend,
     <Client as ContractsBackend<DefaultEnvironment>>::Error: Debug,
 {
     let payload = RequestForAction::CloseRegistrations(draw_number);
 
     let actions = vec![HandleActionInput::Reply(payload.encode())];
-    let rollup_cond_eq =
-        contract.call_builder::<lotto_registration_contract::Contract>()
-            .rollup_cond_eq(vec![], vec![], actions.clone());
+    let rollup_cond_eq = contract
+        .call_builder::<lotto_registration_contract::Contract>()
+        .rollup_cond_eq(vec![], vec![], actions.clone());
 
-    let result = client
+    let _result = client
         .call(&ink_e2e::bob(), &rollup_cond_eq)
         .submit()
         .await
@@ -171,23 +183,25 @@ where
 
 async fn attestor_set_results<Client>(
     client: &mut Client,
-    contract: &InstantiationResult<DefaultEnvironment,  <Client as ContractsBackend<DefaultEnvironment>>::EventLog>,
+    contract: &InstantiationResult<
+        DefaultEnvironment,
+        <Client as ContractsBackend<DefaultEnvironment>>::EventLog,
+    >,
     draw_number: DrawNumber,
     numbers: Vec<Number>,
     winners: Vec<AccountId>,
-)
-where
+) where
     Client: E2EBackend,
     <Client as ContractsBackend<DefaultEnvironment>>::Error: Debug,
 {
     let payload = RequestForAction::SetResults(draw_number, numbers.clone(), winners.len() > 0);
 
     let actions = vec![HandleActionInput::Reply(payload.encode())];
-    let rollup_cond_eq =
-        contract.call_builder::<lotto_registration_contract::Contract>()
-            .rollup_cond_eq(vec![], vec![], actions.clone());
+    let rollup_cond_eq = contract
+        .call_builder::<lotto_registration_contract::Contract>()
+        .rollup_cond_eq(vec![], vec![], actions.clone());
 
-    let result = client
+    let _result = client
         .call(&ink_e2e::bob(), &rollup_cond_eq)
         .submit()
         .await
@@ -205,17 +219,19 @@ where
 
 async fn participates<Client>(
     client: &mut Client,
-    contract: &InstantiationResult<DefaultEnvironment,  <Client as ContractsBackend<DefaultEnvironment>>::EventLog>,
+    contract: &InstantiationResult<
+        DefaultEnvironment,
+        <Client as ContractsBackend<DefaultEnvironment>>::EventLog,
+    >,
     signer: &ink_e2e::Keypair,
     numbers: Vec<Number>,
-)
-where
+) where
     Client: E2EBackend,
     <Client as ContractsBackend<DefaultEnvironment>>::Error: Debug,
 {
-    let participate =
-        contract.call_builder::<lotto_registration_contract::Contract>()
-            .participate(numbers.clone());
+    let participate = contract
+        .call_builder::<lotto_registration_contract::Contract>()
+        .participate(numbers.clone());
     client
         .call(signer, &participate)
         .submit()
@@ -225,15 +241,18 @@ where
 
 async fn can_participate<Client>(
     client: &mut Client,
-    contract: &InstantiationResult<DefaultEnvironment,  <Client as ContractsBackend<DefaultEnvironment>>::EventLog>,
+    contract: &InstantiationResult<
+        DefaultEnvironment,
+        <Client as ContractsBackend<DefaultEnvironment>>::EventLog,
+    >,
 ) -> bool
 where
     Client: E2EBackend,
     <Client as ContractsBackend<DefaultEnvironment>>::Error: Debug,
 {
-    let can_participate =
-        contract.call_builder::<lotto_registration_contract::Contract>()
-            .can_participate();
+    let can_participate = contract
+        .call_builder::<lotto_registration_contract::Contract>()
+        .can_participate();
 
     let result = client
         .call(&ink_e2e::alice(), &can_participate)
@@ -247,15 +266,18 @@ where
 
 async fn get_draw_number<Client>(
     client: &mut Client,
-    contract: &InstantiationResult<DefaultEnvironment,  <Client as ContractsBackend<DefaultEnvironment>>::EventLog>,
+    contract: &InstantiationResult<
+        DefaultEnvironment,
+        <Client as ContractsBackend<DefaultEnvironment>>::EventLog,
+    >,
 ) -> DrawNumber
 where
     Client: E2EBackend,
     <Client as ContractsBackend<DefaultEnvironment>>::Error: Debug,
 {
-    let get_draw_number =
-        contract.call_builder::<lotto_registration_contract::Contract>()
-            .get_draw_number();
+    let get_draw_number = contract
+        .call_builder::<lotto_registration_contract::Contract>()
+        .get_draw_number();
 
     client
         .call(&ink_e2e::alice(), &get_draw_number)
@@ -268,13 +290,17 @@ where
 
 async fn get_status<Client>(
     client: &mut Client,
-    contract: &InstantiationResult<DefaultEnvironment,  <Client as ContractsBackend<DefaultEnvironment>>::EventLog>,
+    contract: &InstantiationResult<
+        DefaultEnvironment,
+        <Client as ContractsBackend<DefaultEnvironment>>::EventLog,
+    >,
 ) -> raffle_registration::Status
 where
     Client: E2EBackend,
     <Client as ContractsBackend<DefaultEnvironment>>::Error: Debug,
 {
-    let get_status = contract.call_builder::<lotto_registration_contract::Contract>()
+    let get_status = contract
+        .call_builder::<lotto_registration_contract::Contract>()
         .get_status();
 
     client
@@ -288,15 +314,18 @@ where
 
 async fn get_registration_contract_id<Client>(
     client: &mut Client,
-    contract: &InstantiationResult<DefaultEnvironment,  <Client as ContractsBackend<DefaultEnvironment>>::EventLog>,
+    contract: &InstantiationResult<
+        DefaultEnvironment,
+        <Client as ContractsBackend<DefaultEnvironment>>::EventLog,
+    >,
 ) -> RegistrationContractId
 where
     Client: E2EBackend,
     <Client as ContractsBackend<DefaultEnvironment>>::Error: Debug,
 {
-    let get_registration_contract_id =
-        contract.call_builder::<lotto_registration_contract::Contract>()
-            .get_registration_contract_id();
+    let get_registration_contract_id = contract
+        .call_builder::<lotto_registration_contract::Contract>()
+        .get_registration_contract_id();
 
     client
         .call(&ink_e2e::alice(), &get_registration_contract_id)
@@ -306,11 +335,6 @@ where
         .return_value()
 }
 
-/*
-#[ink_e2e::test(
-    additional_contracts = "contracts/raffle_registration/Cargo.toml"
-)]
- */
 #[ink_e2e::test]
 async fn test_raffles<Client: E2EBackend>(mut client: Client) -> E2EResult<()> {
     // given
@@ -497,23 +521,17 @@ async fn test_raffles<Client: E2EBackend>(mut client: Client) -> E2EResult<()> {
 
     Ok(())
 }
-/*
-#[ink_e2e::test(
-    additional_contracts = "contracts/raffle_registration/Cargo.toml"
-)]
- */
+
 #[ink_e2e::test]
 async fn test_bad_attestor(mut client: ink_e2e::Client<C, E>) -> E2EResult<()> {
     // given
     let contract = alice_instantiates_raffle_registration(&mut client).await;
 
     // bob is not granted as attestor => it should not be able to send a message
-    let rollup_cond_eq =
-        contract.call_builder::<lotto_registration_contract::Contract>()
-            .rollup_cond_eq(vec![], vec![], vec![]);
-    let result = client.call(&ink_e2e::bob(), &rollup_cond_eq)
-        .submit()
-        .await;
+    let rollup_cond_eq = contract
+        .call_builder::<lotto_registration_contract::Contract>()
+        .rollup_cond_eq(vec![], vec![], vec![]);
+    let result = client.call(&ink_e2e::bob(), &rollup_cond_eq).submit().await;
     assert!(
         result.is_err(),
         "only attestor should be able to send messages"
@@ -533,11 +551,7 @@ async fn test_bad_attestor(mut client: ink_e2e::Client<C, E>) -> E2EResult<()> {
 
     Ok(())
 }
-/*
-#[ink_e2e::test(
-    additional_contracts = "contracts/raffle_registration/Cargo.toml"
-)]
- */
+
 #[ink_e2e::test]
 async fn test_bad_messages(mut client: ink_e2e::Client<C, E>) -> E2EResult<()> {
     // given
@@ -547,12 +561,10 @@ async fn test_bad_messages(mut client: ink_e2e::Client<C, E>) -> E2EResult<()> {
     alice_grants_bob_as_attestor(&mut client, &contract).await;
 
     let actions = vec![HandleActionInput::Reply(58u128.encode())];
-    let rollup_cond_eq =
-        contract.call_builder::<lotto_registration_contract::Contract>()
-            .rollup_cond_eq(vec![], vec![], actions.clone());
-    let result = client.call(&ink_e2e::bob(), &rollup_cond_eq)
-        .submit()
-        .await;
+    let rollup_cond_eq = contract
+        .call_builder::<lotto_registration_contract::Contract>()
+        .rollup_cond_eq(vec![], vec![], actions.clone());
+    let result = client.call(&ink_e2e::bob(), &rollup_cond_eq).submit().await;
     assert!(
         result.is_err(),
         "we should not be able to proceed bad messages"
@@ -568,11 +580,6 @@ async fn test_bad_messages(mut client: ink_e2e::Client<C, E>) -> E2EResult<()> {
 /// Charlie is the sender (ie the payer)
 ///
 ///
-/*
-#[ink_e2e::test(
-    additional_contracts = "contracts/raffle_registration/Cargo.toml"
-)]
- */
 #[ink_e2e::test]
 async fn test_meta_tx_rollup_cond_eq(mut client: ink_e2e::Client<C, E>) -> E2EResult<()> {
     let contract = alice_instantiates_raffle_registration(&mut client).await;
@@ -584,7 +591,8 @@ async fn test_meta_tx_rollup_cond_eq(mut client: ink_e2e::Client<C, E>) -> E2ERe
     );
 
     // add the role => it should be succeed
-    let grant_role = contract.call_builder::<lotto_registration_contract::Contract>()
+    let grant_role = contract
+        .call_builder::<lotto_registration_contract::Contract>()
         .grant_role(ATTESTOR_ROLE, from);
     client
         .call(&ink_e2e::alice(), &grant_role)
@@ -594,9 +602,9 @@ async fn test_meta_tx_rollup_cond_eq(mut client: ink_e2e::Client<C, E>) -> E2ERe
 
     // prepare the meta transaction
     let data = RollupCondEqMethodParams::encode(&(vec![], vec![], vec![]));
-    let prepare_meta_tx =
-        contract.call_builder::<lotto_registration_contract::Contract>()
-            .prepare(from, data.clone());
+    let prepare_meta_tx = contract
+        .call_builder::<lotto_registration_contract::Contract>()
+        .prepare(from, data.clone());
     let result = client
         .call(&ink_e2e::bob(), &prepare_meta_tx)
         .dry_run()
@@ -617,9 +625,9 @@ async fn test_meta_tx_rollup_cond_eq(mut client: ink_e2e::Client<C, E>) -> E2ERe
     let signature = keypair.sign(&ink::scale::Encode::encode(&request)).0;
 
     // do the meta tx: charlie sends the message
-    let meta_tx_rollup_cond_eq =
-        contract.call_builder::<lotto_registration_contract::Contract>()
-            .meta_tx_rollup_cond_eq(request.clone(), signature);
+    let meta_tx_rollup_cond_eq = contract
+        .call_builder::<lotto_registration_contract::Contract>()
+        .meta_tx_rollup_cond_eq(request.clone(), signature);
     client
         .call(&ink_e2e::charlie(), &meta_tx_rollup_cond_eq)
         .submit()

@@ -23,15 +23,13 @@ pub trait RaffleConfig {
     fn get_config(&self) -> Option<Config>;
 }
 
-
 pub trait RaffleConfigStorage {
     fn get_storage(&self) -> &ConfigData;
     fn get_mut_storage(&mut self) -> &mut ConfigData;
 }
 
 pub trait BaseRaffleConfig: RaffleConfigStorage {
-
-    fn inner_get_config(&self) -> Option<Config>{
+    fn inner_get_config(&self) -> Option<Config> {
         self.get_storage().config
     }
 

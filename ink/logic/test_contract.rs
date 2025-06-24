@@ -2,31 +2,24 @@
 
 #[ink::contract]
 pub mod lotto_contract {
-    use crate::{config::*, raffle_manager::{BaseRaffleManager, RaffleManagerData}, error::RaffleError, DrawNumber};
+    use crate::{
+        config::*,
+        error::RaffleError,
+        raffle_manager::{BaseRaffleManager, RaffleManagerData},
+        DrawNumber,
+    };
 
-    use inkv5_client_lib::traits::access_control::{
-        AccessControl, AccessControlData, AccessControlError, AccessControlStorage,
-        BaseAccessControl, RoleType,
-    };
-    use inkv5_client_lib::traits::kv_store::{Key, KvStore, KvStoreData, KvStoreStorage, Value};
-    use inkv5_client_lib::traits::message_queue::{MessageQueue};
-    use inkv5_client_lib::traits::meta_transaction::{
-        BaseMetaTransaction, ForwardRequest, MetaTransaction, MetaTransactionData,
-        MetaTransactionStorage,
-    };
-    use inkv5_client_lib::traits::ownable::{
-        BaseOwnable, Ownable, OwnableData, OwnableError, OwnableStorage,
-    };
-    use inkv5_client_lib::traits::rollup_client::{
-        BaseRollupClient, HandleActionInput, RollupClient
-    };
-    use inkv5_client_lib::traits::RollupClientError;
+    use inkv5_client_lib::traits::access_control::*;
+    use inkv5_client_lib::traits::kv_store::*;
+    use inkv5_client_lib::traits::message_queue::*;
+    use inkv5_client_lib::traits::meta_transaction::*;
+    use inkv5_client_lib::traits::rollup_client::*;
+    use inkv5_client_lib::traits::*;
 
     // Contract storage
     #[derive(Default)]
     #[ink(storage)]
     pub struct Contract {
-        ownable: OwnableData,
         access_control: AccessControlData,
         kv_store: KvStoreData,
         meta_transaction: MetaTransactionData,
@@ -41,14 +34,12 @@ pub mod lotto_contract {
         }
     }
 
-
     /// Implement the business logic for the Rollup Client in the 'on_message_received' method
     impl BaseRollupClient for Contract {
         fn on_message_received(&mut self, _action: Vec<u8>) -> Result<(), RollupClientError> {
             Ok(())
         }
     }
-
 
     /// Boilerplate code to manage the RaffleConfig
     impl crate::config::RaffleConfigStorage for Contract {
@@ -75,7 +66,6 @@ pub mod lotto_contract {
     impl crate::raffle_registration::BaseRaffle for Contract {}
 
     impl crate::raffle_registration::Raffle for Contract {
-
         #[ink(message)]
         fn can_participate(&self) -> bool {
             crate::raffle_registration::BaseRaffle::inner_can_participate(self)
@@ -90,7 +80,6 @@ pub mod lotto_contract {
         fn get_status(&self) -> Result<crate::raffle_registration::Status, RaffleError> {
             crate::raffle_registration::BaseRaffle::inner_get_status(self)
         }
-
     }
 
     /// Boilerplate code to manage the RaffleManager
@@ -107,7 +96,6 @@ pub mod lotto_contract {
     impl crate::raffle_manager::BaseRaffleManager for Contract {}
 
     impl crate::raffle_manager::RaffleManager for Contract {
-
         #[ink(message)]
         fn get_min_number_salts(&self) -> u8 {
             self.inner_get_min_number_salts()
@@ -119,7 +107,7 @@ pub mod lotto_contract {
         }
 
         #[ink(message)]
-        fn get_status(&self) -> Result<crate::raffle_manager::Status, RaffleError>  {
+        fn get_status(&self) -> Result<crate::raffle_manager::Status, RaffleError> {
             crate::raffle_manager::BaseRaffleManager::inner_get_status(self)
         }
 
@@ -137,7 +125,7 @@ pub mod lotto_contract {
         }
 
         #[ink(message)]
-        fn get_generated_salt(&self, draw_number: crate::DrawNumber) -> Option<crate::Salt>  {
+        fn get_generated_salt(&self, draw_number: crate::DrawNumber) -> Option<crate::Salt> {
             self.inner_get_generated_salt(draw_number)
         }
 
@@ -147,38 +135,11 @@ pub mod lotto_contract {
         }
 
         #[ink(message)]
-        fn get_winners(&self, draw_number: crate::DrawNumber) -> Option<crate::raffle_manager::Winners> {
+        fn get_winners(
+            &self,
+            draw_number: crate::DrawNumber,
+        ) -> Option<crate::raffle_manager::Winners> {
             self.inner_get_winners(draw_number)
-        }
-    }
-
-    /// Boilerplate code to manage the ownership
-    impl OwnableStorage for Contract {
-        fn get_storage(&self) -> &OwnableData {
-            &self.ownable
-        }
-
-        fn get_mut_storage(&mut self) -> &mut OwnableData {
-            &mut self.ownable
-        }
-    }
-
-    impl BaseOwnable for Contract {}
-
-    impl Ownable for Contract {
-        #[ink(message)]
-        fn get_owner(&self) -> Option<AccountId> {
-            self.inner_get_owner()
-        }
-
-        #[ink(message)]
-        fn renounce_ownership(&mut self) -> Result<(), OwnableError> {
-            self.inner_renounce_ownership()
-        }
-
-        #[ink(message)]
-        fn transfer_ownership(&mut self, new_owner: Option<AccountId>) -> Result<(), OwnableError> {
-            self.inner_transfer_ownership(new_owner)
         }
     }
 
@@ -296,5 +257,4 @@ pub mod lotto_contract {
             self.inner_meta_tx_rollup_cond_eq(request, signature)
         }
     }
-
 }

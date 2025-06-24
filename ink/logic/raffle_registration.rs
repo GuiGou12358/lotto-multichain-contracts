@@ -1,8 +1,8 @@
 use crate::error::{RaffleError, RaffleError::*};
 use crate::{DrawNumber, Number};
 use ink::prelude::vec::Vec;
-use inkv5_client_lib::traits::kv_store::KvStore;
 use ink::scale::{Decode, Encode};
+use inkv5_client_lib::traits::kv_store::KvStore;
 
 const STATUS: u32 = ink::selector_id!("STATUS");
 const DRAW_NUMBER: u32 = ink::selector_id!("DRAW_NUMBER");
@@ -20,20 +20,17 @@ pub enum Status {
     ResultsReceived,
 }
 
-
 #[ink::trait_definition]
 pub trait Raffle {
-
     /// check if the user can participate are open
     #[ink(message)]
     fn can_participate(&self) -> bool;
 
     #[ink(message)]
-    fn get_draw_number(&self) -> Result<DrawNumber, RaffleError> ;
+    fn get_draw_number(&self) -> Result<DrawNumber, RaffleError>;
 
     #[ink(message)]
-    fn get_status(&self) -> Result<Status, RaffleError> ;
-    
+    fn get_status(&self) -> Result<Status, RaffleError>;
 }
 
 pub trait BaseRaffle: KvStore {
@@ -79,10 +76,7 @@ pub trait BaseRaffle: KvStore {
     }
 
     /// generate the salt used by the vrf
-    fn generate_salt(
-        &mut self,
-        draw_number: DrawNumber,
-    ) -> Result<(), RaffleError> {
+    fn generate_salt(&mut self, draw_number: DrawNumber) -> Result<(), RaffleError> {
         // check the status
         if self.inner_get_status()? != Status::RegistrationsClosed {
             return Err(IncorrectStatus);
@@ -219,35 +213,23 @@ mod tests {
     fn test_generate_salt() {
         let mut contract = Contract::new();
 
-        assert_eq!(
-            contract.generate_salt(10),
-            Err(IncorrectStatus)
-        );
+        assert_eq!(contract.generate_salt(10), Err(IncorrectStatus));
 
         contract.start().expect("Fail to start");
 
-        assert_eq!(
-            contract.generate_salt(10),
-            Err(IncorrectStatus)
-        );
+        assert_eq!(contract.generate_salt(10), Err(IncorrectStatus));
 
         contract
             .open_registrations(10)
             .expect("Fail to open the registrations");
 
-        assert_eq!(
-            contract.generate_salt(10),
-            Err(IncorrectStatus)
-        );
+        assert_eq!(contract.generate_salt(10), Err(IncorrectStatus));
 
         contract
             .close_registrations(10)
             .expect("Fail to close the registrations");
 
-        assert_eq!(
-            contract.generate_salt(9),
-            Err(IncorrectDrawNumber)
-        );
+        assert_eq!(contract.generate_salt(9), Err(IncorrectDrawNumber));
 
         contract
             .generate_salt(10)
@@ -300,7 +282,6 @@ mod tests {
         assert_eq!(contract.get_status(), Ok(Status::ResultsReceived));
         assert_eq!(contract.get_draw_number(), Ok(10));
     }
-
 
     #[ink::test]
     fn test_save_results_wit_salt_generated() {

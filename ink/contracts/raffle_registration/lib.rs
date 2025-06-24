@@ -3,25 +3,17 @@
 #[ink::contract]
 pub mod lotto_registration_contract {
     use ink::prelude::vec::Vec;
-    use lotto::{config::*, error::*, raffle_registration::*, DrawNumber, Number, RegistrationContractId};
+    use lotto::{
+        config::*, error::*, raffle_registration::*, DrawNumber, Number, RegistrationContractId,
+    };
 
-    use inkv5_client_lib::traits::access_control::{
-        AccessControl, AccessControlData, AccessControlError, AccessControlStorage,
-        BaseAccessControl, RoleType,
-    };
-    use inkv5_client_lib::traits::kv_store::{Key, KvStore, KvStoreData, KvStoreStorage, Value};
-    use inkv5_client_lib::traits::message_queue::{MessageQueue};
-    use inkv5_client_lib::traits::meta_transaction::{
-        BaseMetaTransaction, ForwardRequest, MetaTransaction, MetaTransactionData,
-        MetaTransactionStorage,
-    };
-    use inkv5_client_lib::traits::ownable::{
-        BaseOwnable, Ownable, OwnableData, OwnableError, OwnableStorage,
-    };
-    use inkv5_client_lib::traits::rollup_client::{
-        BaseRollupClient, HandleActionInput, RollupClient, ATTESTOR_ROLE
-    };
-    use inkv5_client_lib::traits::RollupClientError;
+    use inkv5_client_lib::only_role;
+    use inkv5_client_lib::traits::access_control::*;
+    use inkv5_client_lib::traits::kv_store::*;
+    use inkv5_client_lib::traits::message_queue::*;
+    use inkv5_client_lib::traits::meta_transaction::*;
+    use inkv5_client_lib::traits::rollup_client::*;
+    use inkv5_client_lib::traits::*;
 
     /// Event emitted when the config is updated
     #[ink(event)]
@@ -145,10 +137,9 @@ pub mod lotto_registration_contract {
     }
 
     // Contract storage
-    #[derive(Default, Debug)]
+    #[derive(Default)]
     #[ink(storage)]
     pub struct Contract {
-        ownable: OwnableData,
         access_control: AccessControlData,
         kv_store: KvStoreData,
         meta_transaction: MetaTransactionData,
@@ -161,8 +152,6 @@ pub mod lotto_registration_contract {
         pub fn new() -> Self {
             let mut instance = Self::default();
             let caller = instance.env().caller();
-            // set the owner of this contract
-            BaseOwnable::init_with_owner(&mut instance, caller);
             BaseAccessControl::init_with_admin(&mut instance, caller);
             instance
         }
@@ -221,9 +210,7 @@ pub mod lotto_registration_contract {
             BaseRaffleConfig::set_config(self, config)?;
 
             // emit the event
-            self.env().emit_event(ConfigUpdated {
-                config,
-            });
+            self.env().emit_event(ConfigUpdated { config });
 
             // start the workflow
             BaseRaffle::start(self)?;
@@ -270,10 +257,7 @@ pub mod lotto_registration_contract {
             Ok(())
         }
 
-        fn inner_generate_salt(
-            &mut self,
-            draw_number: DrawNumber,
-        ) -> Result<(), ContractError> {
+        fn inner_generate_salt(&mut self, draw_number: DrawNumber) -> Result<(), ContractError> {
             // Generate the salt
             BaseRaffle::generate_salt(self, draw_number)?;
 
@@ -312,11 +296,11 @@ pub mod lotto_registration_contract {
         }
 
         #[ink(message)]
-        //#[modifiers(only_role(DEFAULT_ADMIN_ROLE))]
         pub fn register_attestor(
             &mut self,
             account_id: AccountId,
         ) -> Result<(), AccessControlError> {
+            only_role!(self, ADMIN_ROLE);
             AccessControl::grant_role(self, ATTESTOR_ROLE, account_id)?;
             Ok(())
         }
@@ -327,14 +311,14 @@ pub mod lotto_registration_contract {
         }
 
         #[ink(message)]
-        //#[modifiers(only_role(DEFAULT_ADMIN_ROLE))]
         pub fn terminate_me(&mut self) -> Result<(), ContractError> {
+            only_role!(self, ADMIN_ROLE);
             self.env().terminate_contract(self.env().caller());
         }
 
         #[ink(message)]
-        //#[openbrush::modifiers(only_role(DEFAULT_ADMIN_ROLE))]
         pub fn withdraw(&mut self, value: Balance) -> Result<(), ContractError> {
+            only_role!(self, ADMIN_ROLE);
             let caller = Self::env().caller();
             self.env()
                 .transfer(caller, value)
@@ -372,7 +356,6 @@ pub mod lotto_registration_contract {
         }
     }
 
-
     /// Boilerplate code to manage the RaffleConfig
     impl RaffleConfigStorage for Contract {
         fn get_storage(&self) -> &ConfigData {
@@ -394,11 +377,9 @@ pub mod lotto_registration_contract {
     }
 
     /// Boilerplate code to manage the Raffle
-
     impl BaseRaffle for Contract {}
 
     impl Raffle for Contract {
-
         #[ink(message)]
         fn can_participate(&self) -> bool {
             self.inner_can_participate()
@@ -412,37 +393,6 @@ pub mod lotto_registration_contract {
         #[ink(message)]
         fn get_status(&self) -> Result<Status, RaffleError> {
             self.inner_get_status()
-        }
-
-    }
-
-    /// Boilerplate code to manage the ownership
-    impl OwnableStorage for Contract {
-        fn get_storage(&self) -> &OwnableData {
-            &self.ownable
-        }
-
-        fn get_mut_storage(&mut self) -> &mut OwnableData {
-            &mut self.ownable
-        }
-    }
-
-    impl BaseOwnable for Contract {}
-
-    impl Ownable for Contract {
-        #[ink(message)]
-        fn get_owner(&self) -> Option<AccountId> {
-            self.inner_get_owner()
-        }
-
-        #[ink(message)]
-        fn renounce_ownership(&mut self) -> Result<(), OwnableError> {
-            self.inner_renounce_ownership()
-        }
-
-        #[ink(message)]
-        fn transfer_ownership(&mut self, new_owner: Option<AccountId>) -> Result<(), OwnableError> {
-            self.inner_transfer_ownership(new_owner)
         }
     }
 
@@ -560,6 +510,4 @@ pub mod lotto_registration_contract {
             self.inner_meta_tx_rollup_cond_eq(request, signature)
         }
     }
-
-
 }
