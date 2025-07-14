@@ -18,19 +18,20 @@
   },
   "dependencies": {
     "@guigou/sc-rollup-core": "^0.0.4-beta9",
+    "@guigou/sc-rollup-evm": "^0.1.0-beta1",
     "@guigou/sc-rollup-ink-v5": "^0.1.0-beta1",
-    "@guigou/sc-rollup-evm": "^0.0.4-beta3",
     "@noble/hashes": "^1.8.0",
     "@phala/dstack-sdk": "^0.2.2",
-    "@polkadot/keyring": "^13.5.1",
     "@polkadot-api/sdk-ink": "^0.1.0",
     "@polkadot-api/substrate-bindings": "^0.14.0",
     "@polkadot/api": "^16.2.1",
+    "@polkadot/keyring": "^13.5.1",
     "@polkadot/util": "^13.5.1",
     "@polkadot/util-crypto": "^13.5.1",
+    "axios": "^1.10.0",
     "bree": "^9.2.4",
     "node-cron": "^4.1.0",
-    "polkadot-api": "^1.13.1",
+    "polkadot-api": "*",
     "scale-ts": "^1.6.1",
     "viem": "^2.23.5"
   }
