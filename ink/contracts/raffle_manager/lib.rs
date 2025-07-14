@@ -93,8 +93,19 @@ pub mod lotto_registration_manager_contract {
     }
     /// convertor from RollupClientError to ContractError
     impl From<ContractError> for RollupClientError {
-        fn from(_error: ContractError) -> Self {
-            RollupClientError::RuntimeError(1)
+        fn from(error: ContractError) -> Self {
+            match error {
+                ContractError::AccessControlError(_e) => RollupClientError::RuntimeError(1),
+                ContractError::RaffleError(_e) => RollupClientError::RuntimeError(2),
+                ContractError::RollupClientError(_e) => RollupClientError::RuntimeError(3),
+                ContractError::CannotBeClosedYet => RollupClientError::RuntimeError(4),
+                ContractError::NoResult => RollupClientError::RuntimeError(5),
+                ContractError::SaltCannotBeGenerated => RollupClientError::RuntimeError(6),
+                ContractError::SaltNotGenerated => RollupClientError::RuntimeError(7),
+                ContractError::IncorrectInputHash => RollupClientError::RuntimeError(8),
+                ContractError::TransferError => RollupClientError::RuntimeError(9)
+            }
+            
         }
     }
 
@@ -623,6 +634,7 @@ pub mod lotto_registration_manager_contract {
         ink::env::hash_bytes::<hash::Blake2x256>(&encoded_input_data, &mut hash_encoded_input);
 
         ink::env::debug_println!("hash_encoded_input: {hash_encoded_input:02x?}");
+        ink::env::debug_println!("expected hash: {expected_hash:02x?}");
         if hash_encoded_input != *expected_hash {
             return Err(ContractError::IncorrectInputHash);
         }
