@@ -2,6 +2,9 @@
 
 import axios from "axios";
 import type {AccountId20, AccountId32, DrawNumber, RegistrationContractId, Salt} from "./types.ts";
+import {None, Option} from "@guigou/sc-rollup-core";
+import {fromHex} from "polkadot-api/utils";
+import {decodeAddress, encodeAddress} from "@polkadot/util-crypto";
 
 interface ParticipationNode {
     accountId: string;
@@ -75,11 +78,11 @@ export class Indexer {
                 }
             } else if (accountId.length === 42 && accountId.startsWith("0x")) {
                 try {
-                    const bytes = hexToBytes(accountId.slice(2));
+                    const bytes = fromHex(accountId);
                     if (bytes.length !== 20) throw "InvalidKeyLength";
                     winners_evm.push(bytes);
                 } catch {
-                    throw new Error("InvalidKeyLength");
+                    throw new Error("InvalidEvmAddress");
                 }
             } else {
                 throw new Error("InvalidKeyLength");
@@ -92,7 +95,7 @@ export class Indexer {
     async querySalt(
         draw_number: DrawNumber,
         registration_contract_id: RegistrationContractId
-    ): Promise<Salt> {
+    ): Promise<Option<Salt>> {
         const filter = `filter:{and:[{drawNumber:{equalTo:\"${draw_number}\"}},{registrationContractId:{equalTo:\"${registration_contract_id}\"}}]}`;
 
         const body = {
@@ -107,26 +110,19 @@ export class Indexer {
         }).catch(() => { throw "HttpRequestFailed"; });
 
         const nodes = response.data?.data?.raffles?.nodes;
-        if (!nodes || nodes.length === 0) throw "NoSalt";
+        if (!nodes || nodes.length === 0) {
+            return new None();
+        };
 
         const saltHex = nodes[0].salt;
         if (!saltHex.startsWith("0x")) throw new Error("InvalidResponseBody");
 
-        return hexToBytes(saltHex.slice(2));
+        return Option.of(fromHex(saltHex));
+
     }
 }
 
 // Helper functions
 function fromSs58(ss58: string): Uint8Array {
-    // Placeholder: use a proper SS58 decoding lib (e.g. @polkadot/util-crypto)
-    throw new Error("SS58 decoding not implemented.");
-}
-
-function hexToBytes(hex: string): Uint8Array {
-    if (hex.length % 2 !== 0) throw new Error("Invalid hex string");
-    const bytes = new Uint8Array(hex.length / 2);
-    for (let i = 0; i < hex.length; i += 2) {
-        bytes[i / 2] = parseInt(hex.substr(i, 2), 16);
-    }
-    return bytes;
+    return decodeAddress(ss58);
 }

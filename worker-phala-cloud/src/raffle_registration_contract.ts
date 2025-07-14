@@ -18,9 +18,13 @@ export type RequestForAction =
     | { type: 'SetResults'; drawNumber: DrawNumber; numbers: Number[], hasWinner: boolean };
 
 export interface RaffleRegistrationContract {
-    doAction(
+
+    startSession() : Promise<void>;
+
+    isSynched(
         targetDrawNumber: Option<number>,
-        targetStatus: Option<RaffleRegistrationStatus>,
-        action: RequestForAction
-    ): Promise<[boolean, Option<HexString> | null]>;
+        targetStatus: Option<RaffleRegistrationStatus>
+    ) : Promise<boolean>;
+
+    doAction(action: RequestForAction): Promise<Option<HexString>>;
 }

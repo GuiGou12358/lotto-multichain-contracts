@@ -1,13 +1,75 @@
-import type {ContractConfig} from './types';
+import type {ContractConfig, DrawNumber, Number, RegistrationContractId} from './types';
 import {
     type RaffleRegistrationContract,
     RaffleRegistrationStatus,
     type RequestForAction
 } from "./raffle_registration_contract.ts";
 import {InkClient} from "@guigou/sc-rollup-ink-v5";
-import {bool, Bytes, Enum, Struct, Tuple, u128, u16, u32, u8, Vector} from "scale-ts";
+import {bool, Bytes, type Codec, Enum, Struct, Tuple, u128, u16, u32, u8, Vector} from "scale-ts";
 import {hexAddPrefix} from "@polkadot/util";
 import {type HexString, Option} from "@guigou/sc-rollup-core";
+
+
+// Constants
+const DRAW_NUMBER = '0x6dcf72cf'; // assuming ink::selector_id!("DRAW_NUMBER")
+const STATUS = '0x370f6b87'; // assuming ink::selector_id!("STATUS")
+
+
+export class RaffleRegistrationWasmContract implements RaffleRegistrationContract {
+    private client: InkClient<any, RequestForActionStruct>;
+
+    constructor(config: ContractConfig | null) {
+        if (!config) throw new Error('WasmContractNotConfigured');
+
+        this.client = new InkClient<any, RequestForActionStruct>(
+            config.rpc,
+            config.address,
+            hexAddPrefix(config.attestorKey),
+            config.senderKey ? hexAddPrefix(config.senderKey) : undefined,
+            Bytes(),
+            requestForActionCodec
+        );
+    }
+
+    async getDrawNumber(): Promise<Option<number>> {
+        try {
+            return await this.client.getNumber(DRAW_NUMBER, 'u32');
+        } catch (err) {
+            console.error('Draw number unknown in kv store');
+            throw new Error('DrawNumberUnknown');
+        }
+    }
+
+    async getStatus(): Promise<Option<RaffleRegistrationStatus>> {
+        try {
+            const status = await this.client.getNumber(STATUS, 'u8');
+            return status.map(decodeStatus);
+        } catch (err) {
+            console.error('Status unknown in kv store');
+            throw new Error('StatusUnknown');
+        }
+    }
+
+    startSession(): Promise<void> {
+        return this.client.startSession();
+    }
+
+    public async isSynched(
+        expectedDrawNumber: Option<DrawNumber>,
+        expectedStatus: Option<RaffleRegistrationStatus>
+    ): Promise<boolean> {
+        const correctStatus = expectedStatus.isNone() || (await this.getStatus()).valueOf() === expectedStatus.valueOf();
+        const correctDrawNumber = expectedDrawNumber.isNone() || (await this.getDrawNumber()).valueOf() === expectedDrawNumber.valueOf();
+        return correctStatus && correctDrawNumber;
+    }
+
+    doAction(action: RequestForAction): Promise<Option<HexString>> {
+        this.client.addAction(encodeStruct(action));
+        return this.client.commit();
+    }
+
+}
+
 
 /*
 /// Message sent by the offchain rollup to the Raffle Registration Contracts
@@ -26,14 +88,27 @@ pub enum RequestForAction {
 }
  */
 
-const raffleConfigCodec = Struct({
-    nbNumbers: u8,
-    minNumber: u16,
-    maxNumber: u16,
+type RaffleConfigStruct = {
+    nbNumbers: number;
+    minNumber: Number;
+    maxNumber: Number;
 }
+
+export const raffleConfigCodec : Codec<RaffleConfigStruct> = Struct({
+        nbNumbers: u8,
+        minNumber: u16,
+        maxNumber: u16,
+    }
 );
 
-const requestForActionCodec = Enum({
+type RequestForActionStruct =
+    | { tag: 'SetConfigAndStart'; value: [RaffleConfigStruct, RegistrationContractId] }
+    | { tag: 'OpenRegistrations'; value:[DrawNumber] }
+    | { tag: 'CloseRegistrations'; value:[DrawNumber]  }
+    | { tag: 'GenerateSalt'; value:[DrawNumber]  }
+    | { tag: 'SetResults'; value: [DrawNumber, Number[], boolean] };
+
+const requestForActionCodec : Codec<RequestForActionStruct> = Enum({
     SetConfigAndStart: Tuple(raffleConfigCodec, u128),
     OpenRegistrations: Tuple(u32),
     CloseRegistrations: Tuple(u32),
@@ -41,111 +116,44 @@ const requestForActionCodec = Enum({
     SetResults: Tuple(u32, Vector(u16) ,bool),
 })
 
-// Constants
-const DRAW_NUMBER = '0x44524157'; // assuming ink::selector_id!("DRAW_NUMBER")
-const STATUS = '0x53544154'; // assuming ink::selector_id!("STATUS")
-
-export class RaffleRegistrationWasmContract implements RaffleRegistrationContract {
-    private client: InkClient<any, any>;
-
-    constructor(config: ContractConfig | null) {
-        if (!config) throw new Error('WasmContractNotConfigured');
-
-        this.client = new InkClient<any, any>(
-            config.rpc,
-            config.contractId,
-            hexAddPrefix(config.attestorKey),
-            config.senderKey ? hexAddPrefix(config.senderKey) : undefined,
-            Bytes(),
-            requestForActionCodec
-        );
-    }
-
-
-    async getDrawNumber(): Promise<Option<number>> {
-        try {
-            return await this.client.getNumber(DRAW_NUMBER, 'u32');
-        } catch (err) {
-            console.error('Draw number unknown in kv store');
-            throw new Error('DrawNumberUnknown');
+function encodeStruct(request: RequestForAction): RequestForActionStruct {
+    switch (request.type) {
+        case 'SetConfigAndStart': {
+            const config = request.config;
+            const nbNumbers = config.nbNumbers;
+            const minNumber = config.minNumber;
+            const maxNumber = config.maxNumber;
+            return {
+                tag : request.type,
+                value: [{nbNumbers, minNumber, maxNumber}, request.contractId],
+            };
+        }
+        case 'OpenRegistrations':
+        case 'CloseRegistrations':
+        case 'GenerateSalt': {
+            return {
+                tag : request.type,
+                value: [request.drawNumber],
+            };
+        }
+        case 'SetResults': {
+            return {
+                tag : request.type,
+                value: [request.drawNumber, request.numbers, request.hasWinner],
+            };
         }
     }
+}
 
-    async getStatus(): Promise<Option<RaffleRegistrationStatus>> {
-        try {
-            const status = await this.client.getNumber(STATUS, 'u8');
-            return status.map(this.decodeStatus);
-        } catch (err) {
-            console.error('Status unknown in kv store');
-            throw new Error('StatusUnknown');
-        }
-    }
-
-    decodeStatus(status: number): RaffleRegistrationStatus {
-        switch (status) {
-            case 0: return RaffleRegistrationStatus.NotStarted;
-            case 1: return RaffleRegistrationStatus.Started;
-            case 2: return RaffleRegistrationStatus.RegistrationsOpen;
-            case 3: return RaffleRegistrationStatus.RegistrationsClosed;
-            case 4: return RaffleRegistrationStatus.SaltGenerated;
-            case 5: return RaffleRegistrationStatus.ResultsReceived;
-            default: throw new Error('FailedToDecodeStatus');
-        }
-    }
-
-
-    async doAction(
-        targetDrawNumber: Option<number>,
-        targetStatus: Option<RaffleRegistrationStatus>,
-        action: RequestForAction,
-    ): Promise<[boolean, Option<HexString> | null]> {
-
-        const status = await this.getStatus();
-        const drawNumber = await this.getDrawNumber();
-
-        if (drawNumber === targetDrawNumber && status === targetStatus) {
-            return [true, null]; // Already synchronized
-        }
-
-        const encodedAction = this.encodeRequest(action);
-        this.client.addAction(encodedAction);
-
-        const tx = await this.client.commit();
-        return [false, tx];
-    }
-
-    encodeRequest(request: RequestForAction): {} {
-        const tag = request.tag;
-        switch (request.tag) {
-            case 'SetConfigAndStart': {
-                const config = request.config;
-                const nbNumbers = config.nbNumbers;
-                const minNumber = config.minNumber;
-                const maxNumber = config.maxNumber;
-                return {
-                    tag,
-                    value: [{nbNumbers, minNumber, maxNumber}, request.contractId],
-                };
-            }
-            case 'OpenRegistrations':
-            case 'CloseRegistrations':
-            case 'GenerateSalt': {
-                const drawNumber = request.drawNumber;
-                return {
-                    tag,
-                    value: drawNumber,
-                };
-            }
-            case 'SetResults': {
-                const drawNumber = request.drawNumber;
-                const numbers = request.numbers;
-                const hasWinner = request.hasWinner;
-                return {
-                    tag,
-                    value: [drawNumber, numbers, hasWinner],
-                };
-            }
-        }
+function decodeStatus(status: number): RaffleRegistrationStatus {
+    switch (status) {
+        case 0: return RaffleRegistrationStatus.NotStarted;
+        case 1: return RaffleRegistrationStatus.Started;
+        case 2: return RaffleRegistrationStatus.RegistrationsOpen;
+        case 3: return RaffleRegistrationStatus.RegistrationsClosed;
+        case 4: return RaffleRegistrationStatus.SaltGenerated;
+        case 5: return RaffleRegistrationStatus.ResultsReceived;
+        default: throw new Error('FailedToDecodeStatus');
     }
 }
 
