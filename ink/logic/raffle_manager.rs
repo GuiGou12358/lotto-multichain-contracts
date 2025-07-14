@@ -515,8 +515,27 @@ pub trait BaseRaffleManager: RaffleManagerStorage + KvStore {
 
 #[cfg(test)]
 mod tests {
+    use ink::env::hash;
+    use crate::config::Config;
     use super::*;
     use crate::test_contract::lotto_contract::Contract;
+
+    #[ink::test]
+    fn test_hashes() {
+
+        let config = Config {
+            nb_numbers : 4,
+            min_number: 1,
+            max_number: 50,
+        };
+
+        let encoded = config.encode();
+        let mut hash_encoded_input = <hash::Blake2x256 as hash::HashOutput>::Type::default();
+        ink::env::hash_bytes::<hash::Blake2x256>(&encoded, &mut hash_encoded_input);
+
+
+        assert_eq!(hex::decode("1af688b7e4ccbd51529a15d28753270a04adf361d4eb1cbd9553ef19d353c656").expect("hex data incorrect"), hash_encoded_input);
+    }
 
     #[ink::test]
     fn test_add_registrations_contract() {
