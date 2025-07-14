@@ -6,7 +6,7 @@ const SONEIUM_OWNER_PRIVATE_KEY = vars.get("LOTTO_SONEIUM_OWNER_KEY");
 const MINATO_EVM_ATTESTOR_PK = vars.get("LOTTO_MINATO_ATTESTOR_KEY");
 const MINATO_USER1_PRIVATE_KEY = vars.get("LOTTO_MINATO_USER1_KEY");
 const MINATO_USER2_PRIVATE_KEY = vars.get("LOTTO_MINATO_USER2_KEY");
-const MOONBASE_API_KEY = vars.get("MOONBASE_API_KEY");
+//const MOONBASE_API_KEY = vars.get("MOONBASE_API_KEY");
 
 task("accounts", "Prints the list of accounts", async (_taskArgs, hre) => {
   const accounts = await hre.ethers.getSigners();
@@ -94,7 +94,7 @@ const config: HardhatUserConfig = {
     apiKey: {
       'minato': 'empty',
       'soneium': 'empty',
-      'moonbase': MOONBASE_API_KEY,
+      //'moonbase': MOONBASE_API_KEY,
       'shibuya': 'empty',
       'base-sepolia': 'empty'
     },
