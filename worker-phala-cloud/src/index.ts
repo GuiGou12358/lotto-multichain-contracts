@@ -6,6 +6,7 @@ import cron, {type ScheduledTask} from "node-cron";
 import {type ContractConfig, type RegistrationContractId} from "./types.ts";
 import {toHex} from "viem";
 import {LottoWorker} from "./worker.ts";
+import {hexToU8a} from "@polkadot/util";
 
 const port = process.env.PORT || 3000;
 console.log(`Listening on port ${port}`);
@@ -14,7 +15,7 @@ let scheduledTask: ScheduledTask | undefined = undefined;
 
 async function deriveKey(client: TappdClient) : Promise<Uint8Array> {
   const result = await client.deriveKey('polkadot');
-  return result.asUint8Array(32);
+  return hexToU8a(result.key, 32*8);
 }
 
 async function getSubstrateKeyringPair(client: TappdClient) : Promise<KeyringPair> {
@@ -205,13 +206,17 @@ serve({
 
     "/worker/tdx-quote": async (req) => {
       const client = new TappdClient();
-      const result = await client.tdxQuote('Price Feed Oracle');
+      const keypair = await getSubstrateKeyringPair(client);
+      const publicKey = toHex(keypair.publicKey).slice(2);
+      const result = await client.tdxQuote(publicKey);
       return new Response(JSON.stringify(result));
     },
 
     "/worker/tdx-quote-raw": async (req) => {
       const client = new TappdClient();
-      const result = await client.tdxQuote('Price Feed Oracle', 'raw');
+      const keypair = await getSubstrateKeyringPair(client);
+      const publicKey = toHex(keypair.publicKey).slice(2);
+      const result = await client.tdxQuote(publicKey, 'raw');
       return new Response(JSON.stringify(result));
     },
 

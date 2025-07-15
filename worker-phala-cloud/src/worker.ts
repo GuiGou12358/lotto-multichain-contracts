@@ -230,7 +230,7 @@ export class LottoWorker {
 
 function getNumbers(drawNumber: number, nbNumbers: number, minNumber: Number, maxNumber: Number, salt: Salt): Number[] {
     // TODO
-    return [1, 2, 3, 4];
+    return [7,13,20,23,31];
 }
 
 function mapToRequestForAction(message: LottoManagerRequestMessage): RequestForAction {
