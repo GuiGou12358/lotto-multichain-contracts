@@ -1,7 +1,8 @@
 import {expect, test} from "bun:test";
-import {hashInputConfig, LottoWorker} from "../src/worker.ts";
+import {LottoWorker} from "../src/worker.ts";
 import type {ContractConfig, RegistrationContractId} from "../src/types.ts";
 import {toHex} from "viem";
+import {hashInputConfig} from "../src/raffle_manager_contract.ts";
 
 function getRaffleManagerConfig() : ContractConfig {
 

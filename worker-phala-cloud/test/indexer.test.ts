@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import {expect, test} from "bun:test";
 import {Indexer} from "../src/indexer.ts";
 import {toHex} from "viem";
 
@@ -18,8 +18,11 @@ test("query salt 21", async () => {
     const oSalt = await indexer.querySalt(2, 21n);
     expect(oSalt.isSome()).toBe(true);
     const salt = oSalt.valueOf();
-    //expect(toHex(salt)).toBe("0x9f6347e074d4de531e362e8997149a5d2bc4a134131cf079b3a1706cdbf86631");
-    expect(toHex(salt)).toBe("0x5ff3eb7edb36326d7a427b225311db461484faecd37252003729f0e98f84f495");
+    expect(salt).toBeDefined();
+    if (salt) {
+        //expect(toHex(salt)).toBe("0x9f6347e074d4de531e362e8997149a5d2bc4a134131cf079b3a1706cdbf86631");
+        expect(toHex(salt)).toBe("0x5ff3eb7edb36326d7a427b225311db461484faecd37252003729f0e98f84f495");
+    }
 
 });
 
@@ -28,8 +31,11 @@ test("query salt 20", async () => {
     const oSalt = await indexer.querySalt(2, 20n);
     expect(oSalt.isSome()).toBe(true);
     const salt = oSalt.valueOf();
-    //expect(toHex(salt)).toBe("0x17d2210004729856cb80dae2fd31fd6523b8a9382da03059f68dcf2719aae4e9");
-    expect(toHex(salt)).toBe("0x741fa67cbf3b6c4c14e35352f6961fa7280b44a4e12c993f03c10eecb05171f2");
+    expect(salt).toBeDefined();
+    if (salt) {
+        //expect(toHex(salt)).toBe("0x17d2210004729856cb80dae2fd31fd6523b8a9382da03059f68dcf2719aae4e9");
+        expect(toHex(salt)).toBe("0x741fa67cbf3b6c4c14e35352f6961fa7280b44a4e12c993f03c10eecb05171f2");
+    }
 
 });
 
