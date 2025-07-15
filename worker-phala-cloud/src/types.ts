@@ -1,3 +1,5 @@
+import {Bytes} from "scale-ts";
+
 export type DrawNumber = number;
 export type Number = number;
 export type RegistrationContractId = bigint;

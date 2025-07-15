@@ -1,19 +1,14 @@
-import type {ContractConfig, DrawNumber, Number, RegistrationContractId} from './types';
+import type {ContractConfig, DrawNumber} from './types';
 import {
     type RaffleRegistrationContract,
     RaffleRegistrationStatus,
     type RequestForAction
 } from "./raffle_registration_contract.ts";
 import {InkClient} from "@guigou/sc-rollup-ink-v5";
-import {bool, Bytes, type Codec, Enum, Struct, Tuple, u128, u16, u32, u8, Vector} from "scale-ts";
+import {Bytes} from "scale-ts";
 import {hexAddPrefix} from "@polkadot/util";
 import {type HexString, Option} from "@guigou/sc-rollup-core";
-
-
-// Constants
-const DRAW_NUMBER = '0x6dcf72cf'; // assuming ink::selector_id!("DRAW_NUMBER")
-const STATUS = '0x370f6b87'; // assuming ink::selector_id!("STATUS")
-
+import {DRAW_NUMBER, requestForActionCodec, type RequestForActionStruct, STATUS} from "./wasm_codec.ts";
 
 export class RaffleRegistrationWasmContract implements RaffleRegistrationContract {
     private client: InkClient<any, RequestForActionStruct>;
@@ -54,7 +49,7 @@ export class RaffleRegistrationWasmContract implements RaffleRegistrationContrac
         return this.client.startSession();
     }
 
-    public async isSynched(
+    public async isSynced(
         expectedDrawNumber: Option<DrawNumber>,
         expectedStatus: Option<RaffleRegistrationStatus>
     ): Promise<boolean> {
@@ -70,51 +65,6 @@ export class RaffleRegistrationWasmContract implements RaffleRegistrationContrac
 
 }
 
-
-/*
-/// Message sent by the offchain rollup to the Raffle Registration Contracts
-#[derive(scale::Encode, scale::Decode, Debug, Clone)]
-pub enum RequestForAction {
-    /// update the config, set the registration contract id for this contract and start the workflow
-    SetConfigAndStart(RaffleConfig, RegistrationContractId),
-    /// open the registrations for the given draw number
-    OpenRegistrations(DrawNumber),
-    /// close the registrations for the given draw number
-    CloseRegistrations(DrawNumber),
-    /// generate the salt used by VRF
-    GenerateSalt(DrawNumber),
-    /// set the results (winning numbers + true or false if we have a winner) for the given draw number
-    SetResults(DrawNumber, Vec<Number>, bool),
-}
- */
-
-type RaffleConfigStruct = {
-    nbNumbers: number;
-    minNumber: Number;
-    maxNumber: Number;
-}
-
-export const raffleConfigCodec : Codec<RaffleConfigStruct> = Struct({
-        nbNumbers: u8,
-        minNumber: u16,
-        maxNumber: u16,
-    }
-);
-
-type RequestForActionStruct =
-    | { tag: 'SetConfigAndStart'; value: [RaffleConfigStruct, RegistrationContractId] }
-    | { tag: 'OpenRegistrations'; value:[DrawNumber] }
-    | { tag: 'CloseRegistrations'; value:[DrawNumber]  }
-    | { tag: 'GenerateSalt'; value:[DrawNumber]  }
-    | { tag: 'SetResults'; value: [DrawNumber, Number[], boolean] };
-
-const requestForActionCodec : Codec<RequestForActionStruct> = Enum({
-    SetConfigAndStart: Tuple(raffleConfigCodec, u128),
-    OpenRegistrations: Tuple(u32),
-    CloseRegistrations: Tuple(u32),
-    GenerateSalt: Tuple(u32),
-    SetResults: Tuple(u32, Vector(u16) ,bool),
-})
 
 function encodeStruct(request: RequestForAction): RequestForActionStruct {
     switch (request.type) {
@@ -145,6 +95,7 @@ function encodeStruct(request: RequestForAction): RequestForActionStruct {
     }
 }
 
+
 function decodeStatus(status: number): RaffleRegistrationStatus {
     switch (status) {
         case 0: return RaffleRegistrationStatus.NotStarted;
@@ -156,8 +107,3 @@ function decodeStatus(status: number): RaffleRegistrationStatus {
         default: throw new Error('FailedToDecodeStatus');
     }
 }
-
-
-
-
-

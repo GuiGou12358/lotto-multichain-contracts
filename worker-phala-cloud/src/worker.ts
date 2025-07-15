@@ -1,43 +1,31 @@
-import type {
-    AccountId20,
-    AccountId32,
-    ContractConfig,
-    DrawNumber,
-    Hash,
-    Number,
-    RegistrationContractId,
-    Salt
-} from './types';
+import {type ContractConfig, type DrawNumber, type Number, type RegistrationContractId, type Salt,} from './types';
 import {
     type RaffleRegistrationContract,
     RaffleRegistrationStatus,
     type RequestForAction
 } from "./raffle_registration_contract.ts";
-import {InkClient} from "@guigou/sc-rollup-ink-v5";
-import {bool, Bytes, type Codec, Enum, Struct, Tuple, u128, u16, u32, u8, Vector} from "scale-ts";
-import {hexAddPrefix} from "@polkadot/util";
 import {type HexString, None, Option} from "@guigou/sc-rollup-core";
-import {RaffleManagerStatus} from "./raffle_manager_contract.ts";
+import {
+    hashInputConfig,
+    hashInputConfigAndSalt,
+    hashInputNumbers,
+    type RaffleManagerContract,
+    RaffleManagerStatus,
+    RaffleManagerWasmContract
+} from "./raffle_manager_contract.ts";
 import {Indexer} from "./indexer.ts";
-import {fromHex} from "polkadot-api/utils";
-import {RaffleRegistrationEvmContract} from "./evm_contract.ts";
-import {RaffleRegistrationWasmContract} from "./wasm_contract.ts";
-import {BLAKE256} from "@noble/hashes/blake1";
-import {hasher} from "@polkadot/util-crypto/secp256k1/hasher";
-import {AccountId} from "@polkadot-api/substrate-bindings";
-
-
-// Constants
-const DRAW_NUMBER = '0x44524157'; // assuming ink::selector_id!("DRAW_NUMBER")
-const STATUS = '0x53544154'; // assuming ink::selector_id!("STATUS")
+import {RaffleRegistrationEvmContract} from "./raffle_registration_evm_contract.ts";
+import {RaffleRegistrationWasmContract} from "./raffle_registration_wasm_contract.ts";
+import {type LottoManagerRequestMessage, type LottoManagerResponseMessage} from "./wasm_codec.ts";
 
 export class LottoWorker {
 
-    private raffleManager: InkClient<LottoManagerRequestMessage, LottoManagerResponseMessage>;
+    private raffleManager: RaffleManagerContract;
 
     private raffleRegistrationConfigs: Map<RegistrationContractId, ContractConfig> = new Map();
+    private raffleRegistrations: Map<RegistrationContractId, RaffleRegistrationContract> = new Map();
 
-    private urlIndexer : string;
+    private readonly urlIndexer : string;
 
     constructor(
         raffleManagerConfig: ContractConfig | null,
@@ -47,43 +35,24 @@ export class LottoWorker {
         if (!raffleManagerConfig) throw new Error('RaffleManagerNotConfigured');
         if (!urlIndexer) throw new Error('IndexerNotConfigured');
 
-        this.raffleManager = new InkClient<LottoManagerRequestMessage, LottoManagerResponseMessage>(
-            raffleManagerConfig.rpc,
-            raffleManagerConfig.address,
-            hexAddPrefix(raffleManagerConfig.attestorKey),
-            raffleManagerConfig.senderKey ? hexAddPrefix(raffleManagerConfig.senderKey) : undefined,
-            lottoManagerRequestMessageCodec,
-            lottoManagerResponseMessageCodec
-        );
+        this.raffleManager = new RaffleManagerWasmContract(raffleManagerConfig);
         this.raffleRegistrationConfigs = raffleRegistrationConfigs;
         this.urlIndexer = urlIndexer;
     }
 
-    async getDrawNumber(): Promise<Option<number>> {
-        try {
-            return await this.raffleManager.getNumber(DRAW_NUMBER, 'u32');
-        } catch (err) {
-            console.error('Draw number unknown in kv store');
-            throw new Error('DrawNumberUnknown');
-        }
+    getDrawNumber(): Promise<Option<number>> {
+        return this.raffleManager.getDrawNumber();
     }
 
-    async getStatus(): Promise<Option<RaffleManagerStatus>> {
-        try {
-            const status = await this.raffleManager.getNumber(STATUS, 'u8');
-            return status.map(decodeStatus);
-        } catch (err) {
-            console.error('Status unknown in kv store');
-            throw new Error('StatusUnknown');
-        }
+    getStatus(): Promise<Option<RaffleManagerStatus>> {
+        return this.raffleManager.getStatus();
     }
 
     async pollMessages(){
         do {
-            await this.raffleManager.startSession();
             const message = (await this.raffleManager.pollMessage()).valueOf();
             if (!message){
-                console.log("no message anymore");
+                console.log("no message");
                 return;
             }
             console.log("handle message ...");
@@ -197,9 +166,8 @@ export class LottoWorker {
         }
 
         if (response){
-            this.raffleManager.addAction(response);
             // commit only if we sent a response, this way the message stay in the queue.
-            const tx = await this.raffleManager.commit();
+            const tx =  await this.raffleManager.doAction(response);
             txs.set(0n, tx);
         }
         return txs;
@@ -224,25 +192,29 @@ export class LottoWorker {
         const [targetDrawNumber, targetStatus] = mapToTarget(message);
 
         for (const contractId of contractIds) {
-            const raffleRegistrationConfig = this.raffleRegistrationConfigs.get(contractId);
-            if (!raffleRegistrationConfig) throw Error("MissingRegistrationContract " + contractId);
 
-            let raffleRegistration : RaffleRegistrationContract;
-            if (raffleRegistrationConfig.address.startsWith("0x")){
-                raffleRegistration = new RaffleRegistrationEvmContract(raffleRegistrationConfig);
-            } else {
-                raffleRegistration = new RaffleRegistrationWasmContract(raffleRegistrationConfig);
+            let raffleRegistration = this.raffleRegistrations.get(contractId);
+
+            if (!raffleRegistration){
+                const raffleRegistrationConfig = this.raffleRegistrationConfigs.get(contractId);
+                if (!raffleRegistrationConfig) throw Error("MissingRegistrationContract " + contractId);
+                if (raffleRegistrationConfig.address.startsWith("0x")){
+                    raffleRegistration = new RaffleRegistrationEvmContract(raffleRegistrationConfig);
+                } else {
+                    raffleRegistration = new RaffleRegistrationWasmContract(raffleRegistrationConfig);
+                }
+                this.raffleRegistrations.set(contractId, raffleRegistration);
             }
 
             await raffleRegistration.startSession()
 
-            const isSynched = await raffleRegistration.isSynched(targetDrawNumber, targetStatus);
+            const isSynced = await raffleRegistration.isSynced(targetDrawNumber, targetStatus);
 
-            if (isSynched){
-                console.log("Registration contract " + contractId + " is synched");
+            if (isSynced){
+                console.log("Registration contract " + contractId + " is synced");
                 synchronizedContracts.push(contractId);
             } else {
-                console.log("Do action for registration contract " + contractId );
+                console.log("Do action for registration contract " + contractId);
                 const adjustedRequest: RequestForAction =
                     action.type === 'SetConfigAndStart'
                         ? {type: 'SetConfigAndStart', config: action.config, contractId}
@@ -253,23 +225,6 @@ export class LottoWorker {
         }
         return [synchronizedContracts, txs];
     }
-}
-
-export function hashInputConfig(config: RaffleConfigStruct): Hash {
-    const encoded = raffleConfigCodec.enc(config);
-    return hasher('blake2', encoded);
-}
-
-function hashInputNumbers(numbers: Number[]): Hash {
-    const codec = Vector(u16);
-    const encoded = codec.enc(numbers);
-    return hasher('blake2', encoded);
-}
-
-function hashInputConfigAndSalt(config: RaffleConfigStruct, salt: Salt): Hash {
-    const codec = Tuple(raffleConfigCodec, saltCodec);
-    const encoded = codec.enc([config, salt]);
-    return hasher('blake2', encoded);
 }
 
 
@@ -326,149 +281,4 @@ function mapToTarget(message: LottoManagerRequestMessage): [Option<DrawNumber>, 
         default:
             throw new Error('Unsupported type');
     }
-}
-
-
-
-/*
-
-/// Message to synchronize the contracts, to request the lotto draw and get the list of winners.
-/// message pushed in the queue by this contract and read by the offchain rollup
-#[derive(scale::Encode, scale::Decode, Eq, PartialEq, Clone, Debug)]
-pub enum LottoManagerRequestMessage {
-    /// request to propagate the config to all given contracts
-    PropagateConfig(RaffleConfig, Vec<RegistrationContractId>),
-    /// request to open the registrations to all given contracts
-    OpenRegistrations(DrawNumber, Vec<RegistrationContractId>),
-    /// request to close the registrations to all given contracts
-    CloseRegistrations(DrawNumber, Vec<RegistrationContractId>),
-    /// request to generate a salt by all given contracts
-    GenerateSalt(DrawNumber, Vec<RegistrationContractId>),
-    /// request to draw the numbers based on the config and the given salt
-    DrawNumbers(DrawNumber, RaffleConfig, Salt),
-    /// request to check if there is a winner for the given numbers
-    CheckWinners(DrawNumber, Vec<Number>),
-    /// request to propagate the results to all given contracts
-    PropagateResults(
-        DrawNumber,
-        Vec<Number>,
-        bool,
-        Vec<RegistrationContractId>,
-    ),
-}
-*/
-
-type RaffleConfigStruct = {
-    nbNumbers: Number;
-    minNumber: Number;
-    maxNumber: Number;
-}
-
-const raffleConfigCodec : Codec<RaffleConfigStruct> = Struct({
-        nbNumbers: u8,
-        minNumber: u16,
-        maxNumber: u16,
-    }
-);
-const saltCodec = Bytes();
-const hashCodec = Bytes(32);
-const accountId20Codec = Bytes(20);
-const accountId32Codec = Bytes(32);
-
-type LottoManagerRequestMessage =
-    | { tag: 'PropagateConfig'; value: [RaffleConfigStruct, RegistrationContractId[]] }
-    | { tag: 'OpenRegistrations'; value:[DrawNumber, RegistrationContractId[]] }
-    | { tag: 'CloseRegistrations'; value:[DrawNumber, RegistrationContractId[]] }
-    | { tag: 'GenerateSalt'; value:[DrawNumber, RegistrationContractId[]] }
-    | { tag: 'DrawNumbers'; value:[DrawNumber, RaffleConfigStruct, Salt]  }
-    | { tag: 'CheckWinners'; value:[DrawNumber, Number[]]  }
-    | { tag: 'PropagateResults'; value: [DrawNumber, Number[], boolean, RegistrationContractId[]] };
-
-const lottoManagerRequestMessageCodec : Codec<LottoManagerRequestMessage> = Enum({
-    PropagateConfig: Tuple(raffleConfigCodec, Vector(u128)),
-    OpenRegistrations: Tuple(u32, Vector(u128)),
-    CloseRegistrations: Tuple(u32, Vector(u128)),
-    GenerateSalt: Tuple(u32, Vector(u128)),
-    DrawNumbers: Tuple(u32, raffleConfigCodec, saltCodec),
-    CheckWinners: Tuple(u32, Vector(u16)),
-    PropagateResults: Tuple(u32, Vector(u16) ,bool, Vector(u128)),
-})
-
-/*
-/// Offchain rollup response
-#[derive(scale::Encode, scale::Decode)]
-pub enum LottoManagerResponseMessage {
-    /// The config is propagated to the given contract ids.
-    /// arg2: list of contracts where the config is propagated
-    /// Arg2 : Hash of config
-    ConfigPropagated(Vec<RegistrationContractId>, Hash),
-    /// The registration is open for the given contract ids.
-    /// arg1: draw number
-    /// arg2: list of contracts where the registration is open
-    RegistrationsOpen(DrawNumber, Vec<RegistrationContractId>),
-    /// The registration is closed for the given contract ids.
-    /// arg1: draw number
-    /// arg2: list of contracts where the registration is closed
-    RegistrationsClosed(DrawNumber, Vec<RegistrationContractId>),
-    /// The salt is generated for the given contract ids.
-    /// arg1: draw number
-    /// arg2: list of contracts where the salt is generated
-    SaltGenerated(DrawNumber, Vec<(RegistrationContractId, Salt)>),
-    /// Return the winning numbers
-    /// arg1: draw number
-    /// arg2: winning numbers
-    /// arg3: hash of salt used for vrf
-    WinningNumbers(DrawNumber, Vec<Number>, Hash),
-    /// Return the list of winners
-    /// arg1: draw number
-    /// arg2: winners substrate
-    /// arg3: winners evm
-    /// arg4: hash of winning numbers
-    Winners(DrawNumber, Vec<AccountId32>, Vec<AccountId20>, Hash),
-    /// The results are propagated to the given contract ids.
-    /// arg1: draw number
-    /// arg2: list of contracts where the results are propagated
-    /// arg3: hash of results
-    ResultsPropagated(DrawNumber, Vec<RegistrationContractId>, Hash),
-    /// Request to close the registrations
-    CloseRegistrations(),
-}
- */
-
-type LottoManagerResponseMessage =
-    | { tag: 'ConfigPropagated'; value: [RegistrationContractId[], Hash] }
-    | { tag: 'RegistrationsOpen'; value:[DrawNumber, RegistrationContractId[]] }
-    | { tag: 'RegistrationsClosed'; value:[DrawNumber, RegistrationContractId[]] }
-    | { tag: 'SaltGenerated'; value:[DrawNumber, [RegistrationContractId, Salt][]] }
-    | { tag: 'WinningNumbers'; value:[DrawNumber, Number[], Hash] }
-    | { tag: 'Winners'; value:[DrawNumber, AccountId32[], AccountId20[], Hash]  }
-    | { tag: 'ResultsPropagated'; value:[DrawNumber, RegistrationContractId[], Hash]  }
-    | { tag: 'CloseRegistrations'; value: [] };
-
-const lottoManagerResponseMessageCodec : Codec<LottoManagerResponseMessage> = Enum({
-    ConfigPropagated: Tuple(Vector(u128), hashCodec),
-    RegistrationsOpen: Tuple(u32, Vector(u128)),
-    RegistrationsClosed: Tuple(u32, Vector(u128)),
-    SaltGenerated: Tuple(u32, Vector(Tuple(u128, saltCodec))),
-    WinningNumbers: Tuple(u32, Vector(u16), hashCodec),
-    Winners: Tuple(u32, Vector(accountId32Codec), Vector(accountId20Codec), hashCodec),
-    ResultsPropagated: Tuple(u32, Vector(u128), hashCodec),
-    CloseRegistrations: Tuple(),
-})
-
-
-function decodeStatus(status: number): RaffleManagerStatus {
-    switch (status) {
-        case 0: return RaffleManagerStatus.NotStarted;
-        case 1: return RaffleManagerStatus.Started;
-        case 2: return RaffleManagerStatus.RegistrationsOpen;
-        case 3: return RaffleManagerStatus.RegistrationsClosed;
-        case 4: return RaffleManagerStatus.WaitingSalt;
-        case 5: return RaffleManagerStatus.WaitingResult;
-        case 6: return RaffleManagerStatus.WaitingSalt;
-        case 7: return RaffleManagerStatus.WaitingWinner;
-        case 8: return RaffleManagerStatus.DrawFinished;
-        default: throw new Error('FailedToDecodeStatus');
-    }
-
 }

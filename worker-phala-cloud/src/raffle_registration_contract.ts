@@ -21,7 +21,7 @@ export interface RaffleRegistrationContract {
 
     startSession() : Promise<void>;
 
-    isSynched(
+    isSynced(
         targetDrawNumber: Option<number>,
         targetStatus: Option<RaffleRegistrationStatus>
     ) : Promise<boolean>;

@@ -110,7 +110,7 @@ export class RaffleRegistrationEvmContract implements RaffleRegistrationContract
         return this.client.startSession();
     }
 
-    public async isSynched(
+    public async isSynced(
         expectedDrawNumber: Option<DrawNumber>,
         expectedStatus: Option<RaffleRegistrationStatus>
     ): Promise<boolean> {

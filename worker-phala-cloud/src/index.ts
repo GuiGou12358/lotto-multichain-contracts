@@ -3,21 +3,10 @@ import {TappdClient} from "@phala/dstack-sdk";
 import {Keyring} from "@polkadot/keyring";
 import type {KeyringPair} from "@polkadot/keyring/types";
 import cron, {type ScheduledTask} from "node-cron";
-import {type ContractConfig,type RegistrationContractId} from "./types.ts";
-import {hexAddPrefix} from "@polkadot/util";
-import {fromHex} from "polkadot-api/utils"
+import {type ContractConfig, type RegistrationContractId} from "./types.ts";
 import {toHex} from "viem";
 import {LottoWorker} from "./worker.ts";
 
-
-const managerRpc = process.env.MANAGER_RPC;
-const managerAddress = process.env.MANAGER_ADDRESS;
-const registration1rpc = process.env.REGISTRATION_1_RPC;
-const registration1address = process.env.REGISTRATION_1_ADDRESS;
-const registration2rpc = process.env.REGISTRATION_2_RPC;
-const registration2address = process.env.REGISTRATION_2_ADDRESS;
-const attestorPk = process.env.ATTESTOR_PK;
-const indexerUrl = process.env.INDEXER_URL;
 const port = process.env.PORT || 3000;
 console.log(`Listening on port ${port}`);
 
@@ -33,68 +22,98 @@ async function getSubstrateKeyringPair(client: TappdClient) : Promise<KeyringPai
   return new Keyring({type: 'sr25519'}).addFromSeed(seed);
 }
 
-function getIndexerUrl() : string {
-  if (indexerUrl == undefined){
-    throw  new Error("Indexer url is missing!")
-  }
-  return indexerUrl;
-}
-
 function getRaffleManagerConfig() : ContractConfig {
 
-    if (managerRpc == undefined || managerAddress == undefined || attestorPk == undefined){
-      throw  new Error("Raffle Manager Configuration is missing!")
-    }
+  const address = process.env.MANAGER_ADDRESS;
+  const rpc = process.env.MANAGER_RPC;
+  const attestorKey = process.env.ATTESTOR_PK;
 
-    return {
-      rpc : managerRpc,
-      address : managerAddress,
-      attestorKey : attestorPk
-    };
-}
-
-function getRegistrationContractConfig(id: number) : ContractConfig {
-
-  let rpc, address;
-  if (id == 1) {
-    rpc = registration1rpc;
-    address = registration1address;
-  } else if (id == 2) {
-    rpc = registration2rpc;
-    address = registration2address;
+  if (!address){
+    throw new Error("Manager address is missing!");
   }
-
-  if (rpc == undefined || address == undefined || attestorPk == undefined){
-    throw  new Error("Configuration is missing for Raffle Registration " + id);
+  if (!rpc){
+    throw new Error("Manager rpc is missing!");
   }
-
+  if (!attestorKey){
+    throw new Error("Manager attestor key is missing!");
+  }
   return {
-    rpc,
     address,
-    attestorKey : attestorPk,
+    rpc,
+    attestorKey,
+    senderKey: undefined,
   };
 }
 
+function getRaffleRegistrationConfigs() : Map<RegistrationContractId, ContractConfig> {
 
-function getLottoWorker() : LottoWorker {
+  let raffleRegistrationConfigs: Map<RegistrationContractId, ContractConfig> = new Map();
+  const registration1Id = process.env.REGISTRATION_1_ID;
+  const registration1rpc = process.env.REGISTRATION_1_RPC;
+  const registration1address = process.env.REGISTRATION_1_ADDRESS;
 
-  const raffleManagerConfig = getRaffleManagerConfig();
-  const raffleRegistrationConfigs: Map<RegistrationContractId, ContractConfig> = new Map();
-  raffleRegistrationConfigs.set(1n, getRegistrationContractConfig(1));
-  raffleRegistrationConfigs.set(2n, getRegistrationContractConfig(2));
-  const indexerUrl = getIndexerUrl();
+  const attestorKey = process.env.ATTESTOR_PK;
 
-  return new LottoWorker(raffleManagerConfig, raffleRegistrationConfigs, indexerUrl);
+  if (!registration1Id || !registration1rpc || !registration1address || !attestorKey){
+    throw new Error("The config for the registration 1 is missing!");
+  }
+  raffleRegistrationConfigs.set(BigInt(registration1Id),
+      {
+        address: registration1address,
+        rpc: registration1rpc,
+        attestorKey,
+        senderKey: undefined,
+      }
+  );
+
+  const registration2Id = process.env.REGISTRATION_2_ID;
+  const registration2rpc = process.env.REGISTRATION_2_RPC;
+  const registration2address = process.env.REGISTRATION_2_ADDRESS;
+
+  if (!registration2Id || !registration2rpc || !registration2address || !attestorKey){
+    throw new Error("The config for the registration 2 is missing!");
+  }
+  raffleRegistrationConfigs.set(BigInt(registration2Id),
+      {
+        address: registration2address,
+        rpc: registration2rpc,
+        attestorKey,
+        senderKey: undefined,
+      }
+  );
+
+  return raffleRegistrationConfigs;
 }
+
+
+let worker : LottoWorker ;
+
+function getOrCreateWorker() : LottoWorker {
+
+  if (!worker) {
+    const indexerUrl = process.env.INDEXER_URL;
+    if (!indexerUrl) {
+      throw new Error("Indexer url is missing!");
+    }
+    worker = new LottoWorker(
+        getRaffleManagerConfig(),
+        getRaffleRegistrationConfigs(),
+        indexerUrl,
+    )
+  }
+  return worker;
+}
+
+
 
 function getOrCreateTask() : ScheduledTask {
 
   if (!scheduledTask){
-    scheduledTask = cron.schedule('*/5 * * * *',
+    // Every Hour
+    scheduledTask = cron.schedule('0 * * * *',
         async () => {
           try {
-            const worker = getLottoWorker();
-            await worker.pollMessage();
+            await getOrCreateWorker().pollMessages();
           } catch (e){
             console.error(e);
           }
@@ -129,15 +148,14 @@ serve({
   idleTimeout : 30,
   routes: {
     "/": new Response("" +
-        "<h1>Price Feed Worker</h1>" +
+        "<h1>Lotto Worker</h1>" +
         "<div><ul>" +
-        "<li><a href='/manager/config'>/manager/config</a>: Display the manager config.</li>" +
+        "<li><a href='/start'>/manager/start</a>: Start a scheduled task, running every 5 minutes, to orchestrate the contracts.</li>" +
+        "<li><a href='/stop'>/manager/stop</a>: Stop the scheduled task.</li>" +
+        "<li><a href='/execute'>/manager/execute</a>: Force the schedulled task.</li>" +
+        "<li><a href='/config'>/config</a>: Display the config.</li>" +
         "<li><a href='/manager/status'>/manager/status</a>: Query and display the manager status.</li>" +
         "<li><a href='/manager/draw-number'>/manager/draw-number</a>: Query and display the manager draw number.</li>" +
-        "<li><a href='/manager/start'>/manager/start</a>: Start a scheduled task, running every 5 minutes, to orchestrate the contracts.</li>" +
-        "<li><a href='/manager/stop'>/manager/stop</a>: Stop the scheduled task.</li>" +
-        "<li><a href='/manager/execute'>/manager/execute</a>: Force the schedulled task.</li>" +
-        "<li><a href='/registration/:id/config'>/registration/:id/config</a>: Display the config for the given regsitration contract.</li>" +
         "<li><a href='/registration/:id/status'>/registration/:id/status</a>: Query and display the status for the given registration contract.</li>" +
         "<li><a href='/regisration/:id/draw-number'>/regisration/:id/draw-number</a>: Query and display the draw number for the given registration contract.</li>" +
         "<li><a href='/worker/account'>/worker/account</a>: Using the `deriveKey` API to generate a deterministic wallet for Polkadot, a.k.a. a wallet held by the TEE instance.</li>" +
@@ -149,7 +167,7 @@ serve({
     ),
 
     "/manager/status": async (req) => {
-      const worker = getLottoWorker();
+      const worker = getOrCreateWorker();
       const status = await worker.getStatus();
       return new Response(JSON.stringify({
         status
@@ -157,24 +175,24 @@ serve({
     },
 
     "/manager/draw-number": async (req) => {
-      const worker = getLottoWorker();
+      const worker = getOrCreateWorker();
       const drawNumber = await worker.getDrawNumber();
       return new Response(JSON.stringify({
         drawNumber
       }));
     },
 
-    "/manager/start": async (req) => {
+    "/start": async (req) => {
       const task = startScheduledTask();
       return new Response(JSON.stringify({task}));
     },
 
-    "/manager/stop": async (req) => {
+    "/stop": async (req) => {
       const task = stopScheduledTask();
       return new Response(JSON.stringify({task}));
     },
 
-    "/manager/execute": async (req) => {
+    "/execute": async (req) => {
       const task = executeScheduledTask();
       return new Response(JSON.stringify({task}));
     },
