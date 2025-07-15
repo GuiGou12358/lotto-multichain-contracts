@@ -78,14 +78,19 @@ export class LottoWorker {
         }
     }
 
-    async pollMessage(){
-        await this.raffleManager.startSession();
-        const message = (await this.raffleManager.pollMessage()).valueOf();
-        console.log(message);
-        if (message){
+    async pollMessages(){
+        do {
+            await this.raffleManager.startSession();
+            const message = (await this.raffleManager.pollMessage()).valueOf();
+            if (!message){
+                console.log("no message anymore");
+                return;
+            }
+            console.log("handle message ...");
+            console.log(message);
             const txs = await this.handleMessage(message);
             console.log(txs);
-        }
+        } while(true);
     }
 
     async handleMessage(
