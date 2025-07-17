@@ -23,3 +23,5 @@
 /cli/.secret-mainnet-payer
 /cli/.secret-mainnet-wasm
 /cli/.secret-testnet-payer
+/worker-phala-cloud/bun.lock
+/worker-phala-cloud/package-lock.json
