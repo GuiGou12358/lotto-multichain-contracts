@@ -154,10 +154,8 @@ mod tests {
     use super::*;
     use crate::test_contract::lotto_contract::Contract;
 
-
     #[ink::test]
     fn test_constants() {
-
         assert_eq!(2271940407, STATUS);
         assert_eq!(hex::decode("370f6b87"), Ok(STATUS.encode()));
         assert_eq!(3480407917, DRAW_NUMBER);

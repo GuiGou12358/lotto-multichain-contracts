@@ -15,4 +15,5 @@ pub enum RaffleError {
     ExistingWinners,
     AddOverFlow,
     FailedToDecode,
+    CannotBeClosedYet,
 }

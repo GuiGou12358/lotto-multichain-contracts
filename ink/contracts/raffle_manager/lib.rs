@@ -103,9 +103,8 @@ pub mod lotto_registration_manager_contract {
                 ContractError::SaltCannotBeGenerated => RollupClientError::RuntimeError(6),
                 ContractError::SaltNotGenerated => RollupClientError::RuntimeError(7),
                 ContractError::IncorrectInputHash => RollupClientError::RuntimeError(8),
-                ContractError::TransferError => RollupClientError::RuntimeError(9)
+                ContractError::TransferError => RollupClientError::RuntimeError(9),
             }
-            
         }
     }
 
@@ -181,7 +180,6 @@ pub mod lotto_registration_manager_contract {
         config: ConfigData,
         raffle_manager: RaffleManagerData,
         number_of_blocks_for_participation: BlockNumber,
-        next_closing_registrations: BlockNumber,
     }
 
     impl Contract {
@@ -271,28 +269,17 @@ pub mod lotto_registration_manager_contract {
         }
 
         #[ink(message)]
-        pub fn can_close_registrations(&self) -> bool {
-            // check the status of all contracts
-            if !BaseRaffleManager::can_close_registrations(self) {
-                return false;
-            }
-
-            // check the block number
-            let block_number = self.env().block_number();
-            block_number >= self.next_closing_registrations
+        pub fn can_close_registrations(&self) -> Result<bool, ContractError> {
+            Ok(BaseRaffleManager::can_close_registrations(self)?)
         }
 
         #[ink(message)]
-        pub fn get_next_closing_registrations(&self) -> BlockNumber {
-            self.next_closing_registrations
+        pub fn get_next_closing_registrations(&self) -> Result<BlockNumber, ContractError> {
+            Ok(BaseRaffleManager::get_next_closing_registrations(self)?)
         }
 
         #[ink(message)]
         pub fn close_registrations(&mut self) -> Result<(), ContractError> {
-            // check if we can close the registrations
-            if !self.can_close_registrations() {
-                return Err(ContractError::CannotBeClosedYet);
-            }
             // close the registrations in the manager
             let draw_number = BaseRaffleManager::close_registrations(self)?;
 
@@ -386,9 +373,11 @@ pub mod lotto_registration_manager_contract {
             // all contracts are synchronized
             // we can close the registration in X block
             let block_number = self.env().block_number();
-            self.next_closing_registrations = block_number
+            let next_closing_registrations = block_number
                 .checked_add(self.number_of_blocks_for_participation)
                 .ok_or(RaffleError::AddOverFlow)?;
+
+            BaseRaffleManager::set_next_closing_registrations(self, next_closing_registrations);
 
             Ok(())
         }
@@ -677,11 +666,7 @@ pub mod lotto_registration_manager_contract {
                 ) => {
                     self.handle_winners(draw_number, winners_substrate, winners_evm, hash.as_ref())?
                 }
-                LottoManagerResponseMessage::CloseRegistrations() => {
-                    if self.can_close_registrations() {
-                        self.close_registrations()?
-                    }
-                }
+                LottoManagerResponseMessage::CloseRegistrations() => self.close_registrations()?,
             }
 
             Ok(())

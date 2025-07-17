@@ -1,5 +1,6 @@
 use crate::error::{RaffleError, RaffleError::*};
 use crate::{AccountId20, AccountId32, DrawNumber, Number, RegistrationContractId, Salt};
+use ink::env::DefaultEnvironment;
 use ink::prelude::vec::Vec;
 use ink::scale::{Decode, Encode};
 use ink::storage::Mapping;
@@ -7,6 +8,7 @@ use inkv5_client_lib::traits::kv_store::KvStore;
 
 const STATUS: u32 = ink::selector_id!("STATUS");
 const DRAW_NUMBER: u32 = ink::selector_id!("DRAW_NUMBER");
+const NEXT_CLOSING_REGISTRATIONS: u32 = ink::selector_id!("NEXT_CLOSING_REGISTRATIONS");
 
 pub type Winners = (Vec<AccountId32>, Vec<AccountId20>);
 
@@ -144,16 +146,26 @@ pub trait BaseRaffleManager: RaffleManagerStorage + KvStore {
     }
 
     /// Return true if the registrations can be closed
-    fn can_close_registrations(&self) -> bool {
-        self.check_registration_contracts_status(Status::RegistrationsOpen)
-            .is_ok()
+    fn can_close_registrations(&self) -> Result<bool, RaffleError> {
+        // check the status
+        if self
+            .check_registration_contracts_status(Status::RegistrationsOpen)
+            .is_err()
+        {
+            return Ok(false);
+        }
+
+        // check the block number
+        let block_number = ::ink::env::block_number::<DefaultEnvironment>();
+        let next_closing_registrations = self.get_next_closing_registrations()?;
+        Ok(block_number >= next_closing_registrations)
     }
 
     /// Close the registrations
     fn close_registrations(&mut self) -> Result<DrawNumber, RaffleError> {
-        // check the status
-        self.check_registration_contracts_status(Status::RegistrationsOpen)?;
-
+        if !self.can_close_registrations()? {
+            return Err(CannotBeClosedYet);
+        }
         // update the status
         self.set_status(Status::RegistrationsClosed);
         self.inner_get_draw_number()
@@ -380,6 +392,21 @@ pub trait BaseRaffleManager: RaffleManagerStorage + KvStore {
         }
     }
 
+    fn set_next_closing_registrations(&mut self, next_closing_registrations: u32) {
+        KvStore::inner_set_value(
+            self,
+            &NEXT_CLOSING_REGISTRATIONS.encode(),
+            Some(&next_closing_registrations.encode()),
+        );
+    }
+
+    fn get_next_closing_registrations(&self) -> Result<u32, RaffleError> {
+        match KvStore::inner_get_value(self, &NEXT_CLOSING_REGISTRATIONS.encode()) {
+            Some(v) => u32::decode(&mut v.as_slice()).map_err(|_| FailedToDecode),
+            _ => Ok(u32::MAX),
+        }
+    }
+
     fn set_status(&mut self, status: Status) {
         KvStore::inner_set_value(self, &STATUS.encode(), Some(&status.encode()));
     }
@@ -515,16 +542,15 @@ pub trait BaseRaffleManager: RaffleManagerStorage + KvStore {
 
 #[cfg(test)]
 mod tests {
-    use ink::env::hash;
-    use crate::config::Config;
     use super::*;
+    use crate::config::Config;
     use crate::test_contract::lotto_contract::Contract;
+    use ink::env::hash;
 
     #[ink::test]
     fn test_hashes() {
-
         let config = Config {
-            nb_numbers : 4,
+            nb_numbers: 4,
             min_number: 1,
             max_number: 50,
         };
@@ -533,8 +559,11 @@ mod tests {
         let mut hash_encoded_input = <hash::Blake2x256 as hash::HashOutput>::Type::default();
         ink::env::hash_bytes::<hash::Blake2x256>(&encoded, &mut hash_encoded_input);
 
-
-        assert_eq!(hex::decode("1af688b7e4ccbd51529a15d28753270a04adf361d4eb1cbd9553ef19d353c656").expect("hex data incorrect"), hash_encoded_input);
+        assert_eq!(
+            hex::decode("1af688b7e4ccbd51529a15d28753270a04adf361d4eb1cbd9553ef19d353c656")
+                .expect("hex data incorrect"),
+            hash_encoded_input
+        );
     }
 
     #[ink::test]
@@ -603,19 +632,24 @@ mod tests {
     fn test_close_registrations() {
         let mut contract = Contract::new();
 
-        assert_eq!(false, contract.can_close_registrations());
-        assert_eq!(contract.close_registrations(), Err(IncorrectStatus));
+        assert_eq!(Ok(false), contract.can_close_registrations());
+        assert_eq!(contract.close_registrations(), Err(CannotBeClosedYet));
 
         contract.start(0).expect("Fail to start");
 
-        assert_eq!(false, contract.can_close_registrations());
-        assert_eq!(contract.close_registrations(), Err(IncorrectStatus));
+        assert_eq!(Ok(false), contract.can_close_registrations());
+        assert_eq!(contract.close_registrations(), Err(CannotBeClosedYet));
 
         contract
             .open_registrations()
             .expect("Fail to open the registrations");
 
-        assert_eq!(true, contract.can_close_registrations());
+        assert_eq!(Ok(false), contract.can_close_registrations());
+        assert_eq!(contract.close_registrations(), Err(CannotBeClosedYet));
+
+        contract.set_next_closing_registrations(0);
+
+        assert_eq!(Ok(true), contract.can_close_registrations());
         contract
             .close_registrations()
             .expect("Fail to close the registrations");
@@ -634,6 +668,7 @@ mod tests {
 
         assert_eq!(contract.try_to_generate_salt(), Err(IncorrectStatus));
 
+        contract.set_next_closing_registrations(0);
         contract
             .close_registrations()
             .expect("Fail to close the registrations");
@@ -684,6 +719,7 @@ mod tests {
 
         assert_eq!(contract.set_results(1, vec![]), Err(IncorrectStatus));
 
+        contract.set_next_closing_registrations(0);
         contract
             .close_registrations()
             .expect("Fail to close the registrations");
@@ -715,6 +751,7 @@ mod tests {
         contract
             .open_registrations()
             .expect("Fail to open the registrations");
+        contract.set_next_closing_registrations(0);
         contract
             .close_registrations()
             .expect("Fail to close the registrations");
@@ -752,6 +789,7 @@ mod tests {
             Err(IncorrectStatus)
         );
 
+        contract.set_next_closing_registrations(0);
         contract
             .close_registrations()
             .expect("Fail to close the registrations");
@@ -800,6 +838,7 @@ mod tests {
         contract
             .open_registrations()
             .expect("Fail to open the registrations");
+        contract.set_next_closing_registrations(0);
         contract
             .close_registrations()
             .expect("Fail to close the registrations");
@@ -833,6 +872,7 @@ mod tests {
         contract
             .open_registrations()
             .expect("Fail to open the registrations");
+        contract.set_next_closing_registrations(0);
         contract
             .close_registrations()
             .expect("Fail to close the registrations");
@@ -861,6 +901,7 @@ mod tests {
         contract
             .open_registrations()
             .expect("Fail to open the registrations");
+        contract.set_next_closing_registrations(0);
         contract
             .close_registrations()
             .expect("Fail to close the registrations");
@@ -987,6 +1028,7 @@ mod tests {
         );
 
         // close the registrations
+        contract.set_next_closing_registrations(0);
         contract
             .close_registrations()
             .expect("Fail to close the Registrations");
@@ -1026,6 +1068,8 @@ mod tests {
         contract
             .save_registration_contracts_status(1, Status::RegistrationsOpen, vec![100, 101, 102])
             .expect("Save status failed");
+
+        contract.set_next_closing_registrations(0);
         contract
             .close_registrations()
             .expect("Fail to open the Registrations");

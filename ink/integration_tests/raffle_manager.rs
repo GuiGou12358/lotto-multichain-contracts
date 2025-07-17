@@ -501,6 +501,7 @@ where
         .await
         .expect("fail to query can_close_registrations")
         .return_value()
+        .expect("fail to query can_close_registrations")
 }
 
 async fn has_pending_message<Client: E2EBackend>(
