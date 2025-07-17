@@ -16,8 +16,10 @@ import {
 import {Indexer} from "./indexer.ts";
 import {RaffleRegistrationEvmContract} from "./raffle_registration_evm_contract.ts";
 import {RaffleRegistrationWasmContract} from "./raffle_registration_wasm_contract.ts";
-import {type LottoManagerRequestMessage, type LottoManagerResponseMessage} from "./wasm_codec.ts";
-import {getRandomNumber} from "./vrf.ts";
+import {type LottoManagerRequestMessage, type LottoManagerResponseMessage, saltCodec} from "./wasm_codec.ts";
+import {Vrf} from "./vrf.ts";
+import {hexToU8a} from "@polkadot/util";
+import {type Codec, Struct, u32, u8} from "scale-ts";
 
 export class LottoWorker {
 
@@ -26,7 +28,9 @@ export class LottoWorker {
     private raffleRegistrationConfigs: Map<RegistrationContractId, ContractConfig> = new Map();
     private raffleRegistrations: Map<RegistrationContractId, RaffleRegistrationContract> = new Map();
 
-    private readonly urlIndexer : string;
+    private readonly urlIndexer : string
+
+    private readonly vrf : Vrf;
 
     constructor(
         raffleManagerConfig: ContractConfig | null,
@@ -39,6 +43,7 @@ export class LottoWorker {
         this.raffleManager = new RaffleManagerWasmContract(raffleManagerConfig);
         this.raffleRegistrationConfigs = raffleRegistrationConfigs;
         this.urlIndexer = urlIndexer;
+        this.vrf = Vrf.getFromSeed(hexToU8a(raffleManagerConfig.attestorKey));
     }
 
     getDrawNumber(): Promise<Option<number>> {
@@ -50,6 +55,9 @@ export class LottoWorker {
     }
 
     async pollMessages(){
+
+        await this.raffleManager.closeRegistrationsIfNecessary();
+
         do {
             const message = (await this.raffleManager.pollMessage()).valueOf();
             if (!message){
@@ -135,7 +143,7 @@ export class LottoWorker {
             }
             case 'DrawNumbers': {
                 const [drawNumber, config, salt] =  message.value;
-                const numbers = getNumbers(
+                const numbers = this.drawNumbers(
                     drawNumber,
                     config.nbNumbers,
                     config.minNumber,
@@ -226,29 +234,43 @@ export class LottoWorker {
         }
         return [synchronizedContracts, txs];
     }
+
+    drawNumbers(drawNumber: number, nbNumbers: number, minNumber: Number, maxNumber: Number, salt: Salt): Number[] {
+        let numbers : Number[] = [];
+        let i = 0;
+        while (numbers.length < nbNumbers){
+
+            // build the salt used by the vrf
+            const vrfSalt = saltVrfStructCodec.enc({
+                salt,
+                drawNumber,
+                number: i,
+            })
+            // draw the number
+            const number = this.vrf.getRandomNumber(vrfSalt, minNumber, maxNumber);
+            // check if the number has already been drawn
+            if (!numbers.includes(number)) {
+                numbers.push(number);
+            }
+            i++;
+        }
+        return numbers;
+    }
 }
 
-
-function getNumbers(drawNumber: number, nbNumbers: number, minNumber: Number, maxNumber: Number, salt: Salt): Number[] {
-    // TODO
-    return [7,13,20,23,31];
-    const salt = "";
-
-    getRandomNumber()
-
+export type SaltVrfStruct = {
+    salt: Salt,
+    drawNumber: number,
+    number: number,
 }
 
+export const saltVrfStructCodec : Codec<SaltVrfStruct> = Struct({
+    salt: saltCodec,
+    drawNumber: u32,
+    number: u8,
+});
 
 
-/*
-struct SaltVrf {
-    contract_id: WasmContractId,
-        salt: Salt,
-        draw_number: DrawNumber,
-        number: u8,
-}
-
- */
 
 function mapToRequestForAction(message: LottoManagerRequestMessage): RequestForAction {
     switch (message.tag) {

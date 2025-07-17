@@ -1,44 +1,55 @@
 import {expect, test} from "bun:test";
-import {getRandomNumber} from "../src/vrf.ts";
-import {Keyring} from "@polkadot/keyring";
 import {hexToU8a} from "@polkadot/util";
+import {Vrf} from "../src/vrf.ts";
 
-
-test("same input = same output", async () => {
-
-    const seed = hexToU8a('0xd7ec36ea08b186d2ec906a2bb8849e3cea31cc677ba1c0109cda39829e2f3c00');
-    const pair = new Keyring({type: 'sr25519'}).addFromSeed(seed);
-
-    expect(getRandomNumber(pair, hexToU8a('0x00'), 0, 1000)).toBe(getRandomNumber(pair, hexToU8a('0x00'), 0, 1000));
-    expect(getRandomNumber(pair, hexToU8a('0x01'), 0, 1000)).toBe(getRandomNumber(pair, hexToU8a('0x01'), 0, 1000));
-    expect(getRandomNumber(pair, hexToU8a('0x02'), 0, 1000)).toBe(getRandomNumber(pair, hexToU8a('0x02'), 0, 1000));
-
-});
+// random seed
+const seed = hexToU8a('0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f');
 
 test("test preconditions", async () => {
 
-    const seed = hexToU8a('0xd7ec36ea08b186d2ec906a2bb8849e3cea31cc677ba1c0109cda39829e2f3c00');
-    const pair = new Keyring({type: 'sr25519'}).addFromSeed(seed);
+    let vrf = Vrf.getFromSeed(seed);
 
-    expect(() => getRandomNumber(pair, hexToU8a('0x00'), 0, 0)).toThrowError();
-    expect(() => getRandomNumber(pair, hexToU8a('0x00'), -1, 1)).toThrowError();
-    expect(() => getRandomNumber(pair, hexToU8a('0x00'), 0, 4294967297)).toThrowError();
-    expect(getRandomNumber(pair, hexToU8a('0x00'), 0, 4294967296)).toBeNumber();
+    expect(() => vrf.getRandomNumber(hexToU8a('0x00'), 0, 0)).toThrowError();
+    expect(() => vrf.getRandomNumber(hexToU8a('0x00'), -1, 1)).toThrowError();
+    expect(() => vrf.getRandomNumber(hexToU8a('0x00'), 0, 4294967297)).toThrowError();
+    expect(() => vrf.getRandomNumber(hexToU8a('0x'), 0, 10)).toThrowError();
+    expect(vrf.getRandomNumber(hexToU8a('0x00'), 0, 4294967296)).toBeNumber();
 
 });
 
+test("same input = same output", async () => {
+
+    let vrf = Vrf.getFromSeed(seed);
+
+    expect(vrf.getRandomNumber(hexToU8a('0x00'), 0, 1000)).toBe(vrf.getRandomNumber(hexToU8a('0x00'), 0, 1000));
+    expect(vrf.getRandomNumber(hexToU8a('0x01'), 0, 1000)).toBe(vrf.getRandomNumber(hexToU8a('0x01'), 0, 1000));
+    expect(vrf.getRandomNumber(hexToU8a('0x02'), 0, 1000)).toBe(vrf.getRandomNumber(hexToU8a('0x02'), 0, 1000));
+
+});
+
+test("test verify method", async () => {
+
+    let vrf = Vrf.getFromSeed(seed);
+
+    let random = vrf.getRandomNumber(hexToU8a('0x00'), 0, 1000);
+    expect(vrf.verify(hexToU8a('0x00'), 0, 1000, random)).toBe(true);
+    // different salt
+    expect(vrf.verify(hexToU8a('0x01'), 0, 1000, random)).toBe(false);
+    // different max value
+    expect(vrf.verify(hexToU8a('0x00'), 0, 999, random)).toBe(false);
+    // different min value
+    expect(vrf.verify(hexToU8a('0x00'), 1, 1000, random)).toBe(false);
+
+});
 
 test("test distribution", async () => {
 
-    const seed = hexToU8a('0xd7ec36ea08b186d2ec906a2bb8849e3cea31cc677ba1c0109cda39829e2f3c00');
-    const pair = new Keyring({type: 'sr25519'}).addFromSeed(seed);
+    let vrf = Vrf.getFromSeed(seed);
 
-    console.log(pair.address);
-
-    const times = [0, 0, 0, 0, 0, 0, 0, 0, 0 ,0 ,0, 0, 0];
+    const times = [0, 0, 0, 0, 0, 0, 0, 0, 0 ,0 ,0, 0];
 
     for (let i= 0; i < 10000; i++){
-        const r = getRandomNumber(pair, hexToU8a(i.toString(16)), 1, 10);
+        const r = vrf.getRandomNumber(hexToU8a(i.toString(16)), 1, 10);
         expect(r >= 1);
         expect(r < 10);
         times[r] = times[r] + 1;

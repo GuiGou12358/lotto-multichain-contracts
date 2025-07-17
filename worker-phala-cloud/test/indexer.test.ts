@@ -64,3 +64,20 @@ test("query substrate winner", async () => {
     expect(winners2.length).toBe(0);
     expect(toHex(winners1[0])).toBe("0xcc30c85c00b81358a3f3ce815914450a62667e54223f1a1928b6cc8aa03b8657");
 });
+
+
+test("query substrate winner 3", async () => {
+    const [winners1, winners2] = await indexer.queryWinners(1, [7,11,24,28]);
+    expect(winners1.length).toBe(1);
+    expect(winners2.length).toBe(0);
+    expect(toHex(winners1[0])).toBe("0x90abf1b1d9e7538ef25d75f8fd4efaf64a67c15ddf2414bdf605315ab7718c6d");
+});
+
+
+test("query evm winner 1", async () => {
+    const [winners1, winners2] = await indexer.queryWinners(1, [7,13,20,23]);
+    expect(winners1.length).toBe(0);
+    expect(winners2.length).toBe(1);
+    expect(toHex(winners2[0])).toBe("0x873de45cb8453144a8bc76c2916dd9c52a9bdb34");
+});
+

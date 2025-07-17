@@ -1,31 +1,50 @@
 import type {KeyringPair} from "@polkadot/keyring/types";
 import {to_hex} from "@phala/dstack-sdk";
-import {toHex} from "viem";
-
-function vrf(pair: KeyringPair, salt: Uint8Array) : Uint8Array {
-    return pair.derive("/"+to_hex(salt)).addressRaw;
-}
+import {size, toHex} from "viem";
+import {Keyring} from "@polkadot/keyring";
 
 const MAX_U32 = Math.pow(2, 32);
 
-export function getRandomNumber(pair: KeyringPair, salt: Uint8Array, min: number, max: number) : number {
-    if (min >= max){
-        throw new Error("max must be greater than min");
-    }
-    if (min < 0 || max < 0){
-        throw new Error("min maw must be greater than 0");
-    }
-    if (min > MAX_U32 || max > MAX_U32){
-        throw new Error("min maw must be lower than 2^32");
+export class Vrf {
+
+    private readonly pair: KeyringPair;
+
+    constructor(pair: KeyringPair) {
+        this.pair = pair;
     }
 
-    const output = vrf(pair, salt);
-    // keep only 4 bytes to compute the random u32
-    const u32 = output.slice(0, 4);
-    const random = parseInt(toHex(u32), 16);
-    return random % (max - min + 1) + min;
+    static getFromSeed(seed: Uint8Array) : Vrf {
+       const pair  = new Keyring({type: 'sr25519'}).addFromSeed(seed);
+       return new Vrf(pair);
+    }
+
+    getRandomNumber(salt: Uint8Array, min: number, max: number) : number {
+
+        // precondition check
+        if (min >= max){
+            throw new Error("Max must be greater than min");
+        }
+        if (min < 0){
+            throw new Error("Min must be greater or equals to 0");
+        }
+        if (max > MAX_U32){
+            throw new Error("max must be lower than 2^32");
+        }
+        if (!salt && size(salt) == 0){
+            throw new Error("the salt must not be empty");
+        }
+
+        // derive a new address base on the salt
+        const output = this.pair.derive("/"+to_hex(salt)).addressRaw;
+        // keep only 4 bytes to compute the random u32
+        const random = output.slice(0, 4);
+        const randomNumber = parseInt(toHex(random), 16);
+        return randomNumber % (max - min + 1) + min;
+    }
+
+    verify(salt: Uint8Array, min: number, max: number, n: number) : boolean {
+        return n === this.getRandomNumber(salt, min, max);
+    }
+
 }
 
-export function verify(pair: KeyringPair, salt: Uint8Array, min: number, max: number, n: number) : boolean {
-    return n === getRandomNumber(pair, salt, min, max);
-}

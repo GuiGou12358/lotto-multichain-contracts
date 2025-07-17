@@ -22,6 +22,7 @@
     "@guigou/sc-rollup-ink-v5": "^0.1.0-beta1",
     "@noble/hashes": "^1.8.0",
     "@phala/dstack-sdk": "^0.2.2",
+    "@polkadot-api/descriptors": "file:.papi/descriptors",
     "@polkadot-api/sdk-ink": "^0.1.0",
     "@polkadot-api/substrate-bindings": "^0.14.0",
     "@polkadot/api": "^16.2.1",

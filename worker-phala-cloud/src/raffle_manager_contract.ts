@@ -15,6 +15,13 @@ import {
 } from "./wasm_codec.ts";
 import {hasher} from "@polkadot/util-crypto/secp256k1/hasher";
 import {Tuple, u16, Vector} from "scale-ts";
+import {astar} from "@polkadot-api/descriptors";
+import {createClient, type PolkadotClient} from "polkadot-api";
+import {withPolkadotSdkCompat} from "polkadot-api/polkadot-sdk-compat";
+import {getWsProvider} from "polkadot-api/ws-provider/web";
+
+
+export const NEXT_CLOSING_REGISTRATIONS = '0xc2ec951c'; // assuming ink::selector_id!("NEXT_CLOSING_REGISTRATIONS")
 
 export enum RaffleManagerStatus {
     NotStarted = 'NotStarted',
@@ -48,11 +55,13 @@ export interface RaffleManagerContract {
     doAction(action: LottoManagerResponseMessage): Promise<Option<HexString>>;
     getDrawNumber(): Promise<Option<number>>;
     getStatus(): Promise<Option<RaffleManagerStatus>>;
+    closeRegistrationsIfNecessary(): Promise<void>;
 }
 
 
 export class RaffleManagerWasmContract implements RaffleManagerContract {
     private client: InkClient<LottoManagerRequestMessage, LottoManagerResponseMessage>;
+    private polkadotClient : PolkadotClient;
 
     constructor(config: ContractConfig | null) {
         if (!config) throw new Error('WasmContractNotConfigured');
@@ -65,6 +74,8 @@ export class RaffleManagerWasmContract implements RaffleManagerContract {
             lottoManagerRequestMessageCodec,
             lottoManagerResponseMessageCodec
         );
+        this.polkadotClient = createClient(withPolkadotSdkCompat(getWsProvider(config.rpc)));
+
     }
 
     async getDrawNumber(): Promise<Option<number>> {
@@ -96,6 +107,27 @@ export class RaffleManagerWasmContract implements RaffleManagerContract {
         // commit only if we sent a response, this way the message stay in the queue.
         return this.client.commit();
     }
+
+    async closeRegistrationsIfNecessary() {
+
+        await this.client.startSession();
+
+        const oNextClosingRegistrations = await this.client.getNumber(NEXT_CLOSING_REGISTRATIONS, 'u32');
+        const nextClosingRegistrations = oNextClosingRegistrations.valueOf();
+        if (!nextClosingRegistrations){
+            console.warn('Next closing registration number unknown in kv store');
+            return;
+        }
+        console.warn('Closing registration at block : %s ', nextClosingRegistrations);
+        const blockNumber = await this.polkadotClient.getTypedApi(astar).query.System.Number.getValue();
+        console.warn('Current block number : %s ', blockNumber);
+        if (blockNumber >= nextClosingRegistrations) {
+            this.client.addAction({ tag: 'CloseRegistrations', value: [] });
+            const tx = await this.client.commit();
+            console.log('Registrations closed : ' + tx);
+        }
+    }
+
 }
 
 export function hashInputConfig(config: RaffleConfigStruct): Hash {
