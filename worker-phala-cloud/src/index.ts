@@ -6,7 +6,7 @@ import cron, {type ScheduledTask} from "node-cron";
 import {type ContractConfig, type RegistrationContractId} from "./types.ts";
 import {toHex} from "viem";
 import {LottoWorker} from "./worker.ts";
-import {hexToU8a} from "@polkadot/util";
+import {hasher} from "@polkadot/util-crypto/secp256k1/hasher";
 
 const port = process.env.PORT || 3000;
 console.log(`Listening on port ${port}`);
@@ -15,7 +15,7 @@ let scheduledTask: ScheduledTask | undefined = undefined;
 
 async function deriveKey(client: TappdClient) : Promise<Uint8Array> {
   const result = await client.deriveKey('polkadot');
-  return hexToU8a(result.key, 32*8);
+  return hasher('blake2', result.key);
 }
 
 async function getSubstrateKeyringPair(client: TappdClient) : Promise<KeyringPair> {

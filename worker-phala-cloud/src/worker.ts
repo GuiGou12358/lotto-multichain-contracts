@@ -17,6 +17,7 @@ import {Indexer} from "./indexer.ts";
 import {RaffleRegistrationEvmContract} from "./raffle_registration_evm_contract.ts";
 import {RaffleRegistrationWasmContract} from "./raffle_registration_wasm_contract.ts";
 import {type LottoManagerRequestMessage, type LottoManagerResponseMessage} from "./wasm_codec.ts";
+import {getRandomNumber} from "./vrf.ts";
 
 export class LottoWorker {
 
@@ -231,7 +232,23 @@ export class LottoWorker {
 function getNumbers(drawNumber: number, nbNumbers: number, minNumber: Number, maxNumber: Number, salt: Salt): Number[] {
     // TODO
     return [7,13,20,23,31];
+    const salt = "";
+
+    getRandomNumber()
+
 }
+
+
+
+/*
+struct SaltVrf {
+    contract_id: WasmContractId,
+        salt: Salt,
+        draw_number: DrawNumber,
+        number: u8,
+}
+
+ */
 
 function mapToRequestForAction(message: LottoManagerRequestMessage): RequestForAction {
     switch (message.tag) {
