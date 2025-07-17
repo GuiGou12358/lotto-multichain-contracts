@@ -4,10 +4,9 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "dev": "bun run --hot src/index.ts",
-    "gen-astar-rpc": "yarn papi add -w wss://rpc.astar.network shibuya",
-    "gen-contract-metadata": "yarn papi ink add metadata/price_feed_consumer_ink_v5.json",
-    "generate": "yarn gen-astar-rpc && yarn gen-contract-rpc"
+    "generate": "bun gen-astar-rpc",
+    "gen-astar-rpc": "yarn papi add -w wss://rpc.astar.network astar",
+    "dev": "bun run --hot src/index.ts"
   },
   "devDependencies": {
     "@types/bun": "latest"
@@ -17,23 +16,22 @@
     "typescript": "^5"
   },
   "dependencies": {
-    "@guigou/sc-rollup-core": "^0.0.4-beta9",
-    "@guigou/sc-rollup-evm": "^0.1.0-beta1",
-    "@guigou/sc-rollup-ink-v5": "^0.1.0-beta1",
+    "@guigou/sc-rollup-core": "^0.1.1-beta1",
+    "@guigou/sc-rollup-evm": "^0.1.1-beta1",
+    "@guigou/sc-rollup-ink-v5": "^0.1.1-beta2",
+    "@guigou/util-crypto": "^0.1.1-beta1",
     "@noble/hashes": "^1.8.0",
     "@phala/dstack-sdk": "^0.2.2",
     "@polkadot-api/descriptors": "file:.papi/descriptors",
-    "@polkadot-api/sdk-ink": "^0.1.0",
-    "@polkadot-api/substrate-bindings": "^0.14.0",
-    "@polkadot/api": "^16.2.1",
-    "@polkadot/keyring": "^13.5.1",
-    "@polkadot/util": "^13.5.1",
-    "@polkadot/util-crypto": "^13.5.1",
+    "@polkadot-api/sdk-ink": "^0.3.2",
+    "@polkadot-api/substrate-bindings": "^0.15.0",
+    "@polkadot/api": "^16.4.1",
+    "@polkadot/keyring": "^13.5.3",
+    "@polkadot/util": "^13.5.3",
+    "@polkadot/util-crypto": "^13.5.3",
     "axios": "^1.10.0",
     "bree": "^9.2.4",
-    "node-cron": "^4.1.0",
-    "polkadot-api": "*",
-    "scale-ts": "^1.6.1",
-    "viem": "^2.23.5"
+    "node-cron": "^4.2.1",
+    "scale-ts": "^1.6.1"
   }
 }

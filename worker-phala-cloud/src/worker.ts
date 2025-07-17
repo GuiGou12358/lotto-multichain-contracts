@@ -17,9 +17,9 @@ import {Indexer} from "./indexer.ts";
 import {RaffleRegistrationEvmContract} from "./raffle_registration_evm_contract.ts";
 import {RaffleRegistrationWasmContract} from "./raffle_registration_wasm_contract.ts";
 import {type LottoManagerRequestMessage, type LottoManagerResponseMessage, saltCodec} from "./wasm_codec.ts";
-import {Vrf} from "./vrf.ts";
 import {hexToU8a} from "@polkadot/util";
 import {type Codec, Struct, u32, u8} from "scale-ts";
+import {Vrf} from "@guigou/util-crypto";
 
 export class LottoWorker {
 
@@ -54,10 +54,11 @@ export class LottoWorker {
         return this.raffleManager.getStatus();
     }
 
-    async pollMessages(){
-
+    async closeRegistrationsIfNecessary(){
         await this.raffleManager.closeRegistrationsIfNecessary();
+    }
 
+    async pollMessages(){
         do {
             const message = (await this.raffleManager.pollMessage()).valueOf();
             if (!message){

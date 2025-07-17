@@ -6,7 +6,7 @@ import cron, {type ScheduledTask} from "node-cron";
 import {type ContractConfig, type RegistrationContractId} from "./types.ts";
 import {toHex} from "viem";
 import {LottoWorker} from "./worker.ts";
-import {hasher} from "@polkadot/util-crypto/secp256k1/hasher";
+import {computePrivateKey} from "@guigou/util-crypto";
 
 const port = process.env.PORT || 3000;
 console.log(`Listening on port ${port}`);
@@ -14,8 +14,8 @@ console.log(`Listening on port ${port}`);
 let scheduledTask: ScheduledTask | undefined = undefined;
 
 async function deriveKey(client: TappdClient) : Promise<Uint8Array> {
-  const result = await client.deriveKey('polkadot');
-  return hasher('blake2', result.key);
+  const deriveKeyResponse = await client.deriveKey('polkadot');
+  return computePrivateKey(deriveKeyResponse);
 }
 
 async function getSubstrateKeyringPair(client: TappdClient) : Promise<KeyringPair> {
@@ -110,11 +110,14 @@ function getOrCreateWorker() : LottoWorker {
 function getOrCreateTask() : ScheduledTask {
 
   if (!scheduledTask){
-    // Every Hour
-    scheduledTask = cron.schedule('0 * * * *',
+    // Every 15 minutes
+    scheduledTask = cron.schedule('*/15 * * * *',
         async () => {
           try {
-            await getOrCreateWorker().pollMessages();
+            const worker = getOrCreateWorker();
+            await worker.pollMessages();
+            await worker.closeRegistrationsIfNecessary();
+            await worker.pollMessages();
           } catch (e){
             console.error(e);
           }

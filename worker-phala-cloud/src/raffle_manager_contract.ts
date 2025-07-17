@@ -111,7 +111,6 @@ export class RaffleManagerWasmContract implements RaffleManagerContract {
     async closeRegistrationsIfNecessary() {
 
         await this.client.startSession();
-
         const oNextClosingRegistrations = await this.client.getNumber(NEXT_CLOSING_REGISTRATIONS, 'u32');
         const nextClosingRegistrations = oNextClosingRegistrations.valueOf();
         if (!nextClosingRegistrations){
