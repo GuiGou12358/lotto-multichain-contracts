@@ -20,8 +20,6 @@ type E2EResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 async fn alice_instantiates_raffle_manager<Client>(
     client: &mut Client,
-    //) -> <Contract as ContractCallBuilder>::Type
-    //) -> CallBuilder<DefaultEnvironment, Args, RetType, B>
 ) -> InstantiationResult<
     DefaultEnvironment,
     <Client as ContractsBackend<DefaultEnvironment>>::EventLog,
@@ -29,11 +27,6 @@ async fn alice_instantiates_raffle_manager<Client>(
 where
     Client: E2EBackend,
     <Client as ContractsBackend<DefaultEnvironment>>::Error: Debug,
-    //Contract: ContractCallBuilder,
-    //Contract::Type: FromAccountId<DefaultEnvironment>,
-    //Args: Encode + Clone,
-    //RetType: Send + Decode,
-    //B: BuilderClient<DefaultEnvironment>,
 {
     let mut lotto_constructor = lotto_registration_manager_contract::ContractRef::new();
     let contract = client
@@ -46,7 +39,6 @@ where
         .await
         .expect("instantiate failed");
     contract
-    //contract.call_builder::<lotto_registration_manager_contract::Contract>()
 }
 
 async fn alice_configures_raffle_manager<Client>(
