@@ -103,7 +103,7 @@ pub mod lotto_registration_contract {
         }
     }
 
-    /// convertor from RaffleError to ContractError
+    /// convertor from RollupClientError to ContractError
     impl From<RollupClientError> for ContractError {
         fn from(error: RollupClientError) -> Self {
             ContractError::RollupClientError(error)
